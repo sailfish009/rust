@@ -1,0 +1,34 @@
+language: rust
+dist: trusty
+sudo: false
+cache: cargo
+os:
+  - linux
+  - osx
+rust:
+  - nightly
+matrix:
+  include:
+  - rust: nightly
+    env: USE_FEATURES=true
+    os: linux
+  allow_failures:
+  # avoid delaying prs with travis osx issues
+  - os: osx
+  # clippy compilation issues are somewhat expected
+  - env: USE_FEATURES=true
+  fast_finish: true
+install:
+    # Required for Racer autoconfiguration
+    rustup component add rust-src
+script: |
+  #!/bin/bash
+  if [ -v USE_FEATURES ]; then
+    # compile #[cfg(not(test))] code
+    cargo build -v --all-features
+    cargo test -v --all-features
+  else
+    # compile #[cfg(not(test))] code
+    cargo build -v
+    cargo test -v
+  fi
