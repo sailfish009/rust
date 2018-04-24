@@ -589,7 +589,8 @@ impl<'a> Parser<'a> {
             self.token_cursor.next()
         };
         if next.sp == syntax_pos::DUMMY_SP {
-            next.sp = self.prev_span;
+            // Tweak the location for better diagnostics, but keep syntactic context intact.
+            next.sp = self.prev_span.with_ctxt(next.sp.ctxt());
         }
         next
     }
@@ -5758,18 +5759,33 @@ impl<'a> Parser<'a> {
                                      vis: Visibility,
                                      attrs: Vec<Attribute> )
                                      -> PResult<'a, StructField> {
+        let mut seen_comma: bool = false;
         let a_var = self.parse_name_and_ty(lo, vis, attrs)?;
+        if self.token == token::Comma {
+            seen_comma = true;
+        }
         match self.token {
             token::Comma => {
                 self.bump();
             }
             token::CloseDelim(token::Brace) => {}
             token::DocComment(_) => {
+                let previous_span = self.prev_span;
                 let mut err = self.span_fatal_err(self.span, Error::UselessDocComment);
                 self.bump(); // consume the doc comment
-                if self.eat(&token::Comma) || self.token == token::CloseDelim(token::Brace) {
+                let comma_after_doc_seen = self.eat(&token::Comma);
+                // `seen_comma` is always false, because we are inside doc block
+                // condition is here to make code more readable
+                if seen_comma == false && comma_after_doc_seen == true {
+                    seen_comma = true;
+                }
+                if comma_after_doc_seen || self.token == token::CloseDelim(token::Brace) {
                     err.emit();
                 } else {
+                    if seen_comma == false {
+                        let sp = self.sess.codemap().next_point(previous_span);
+                        err.span_suggestion(sp, "missing comma here", ",".into());
+                    }
                     return Err(err);
                 }
             }

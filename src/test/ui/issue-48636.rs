@@ -1,4 +1,4 @@
-// Copyright 2017 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2018 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,15 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(allocator_api, nonnull)]
-
-use std::alloc::{Alloc, Global, oom};
-
-fn main() {
-    unsafe {
-        let ptr = Global.alloc_one::<i32>().unwrap_or_else(|_| oom());
-        *ptr.as_ptr() = 4;
-        assert_eq!(*ptr.as_ptr(), 4);
-        Global.dealloc_one(ptr);
-    }
+struct S {
+    x: u8
+    /// The id of the parent core
+    y: u8,
 }
+//~^^^ ERROR found a documentation comment that doesn't document anything
+fn main() {}
