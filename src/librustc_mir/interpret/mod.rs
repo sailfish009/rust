@@ -19,13 +19,13 @@ pub use self::place::{Place, PlaceExtra};
 pub use self::memory::{Memory, MemoryKind, HasMemory};
 
 pub use self::const_eval::{
-    eval_body_with_mir,
+    eval_promoted,
     mk_borrowck_eval_cx,
     eval_body,
     CompileTimeEvaluator,
     const_eval_provider,
     const_val_field,
-    const_discr,
+    const_variant_index,
 };
 
 pub use self::machine::Machine;
