@@ -8,22 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// compile-pass
+#![feature(crate_in_paths)]
+#![feature(crate_visibility_modifier)]
 
-#![feature(const_fn)]
-
-const fn foo(x: u32) -> u32 {
-    x
+mod m {
+    pub struct Z;
+    pub struct S1(crate (::m::Z)); // OK
+    pub struct S2(::crate ::m::Z); // OK
+    pub struct S3(crate ::m::Z); // OK
 }
 
 fn main() {
-    const X: u32 = 0-1;
-    //~^ WARN attempt to subtract with overflow
-    //~| WARN this constant cannot be used
-    const Y: u32 = foo(0-1);
-    //~^ WARN attempt to subtract with overflow
-    //~| WARN this constant cannot be used
-    println!("{} {}", X, Y);
-    //~^ WARN constant evaluation error
-    //~| WARN constant evaluation error
+    crate struct S; // OK (item in statement position)
 }

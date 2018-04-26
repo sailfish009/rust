@@ -82,6 +82,14 @@ pub fn format_unsafety(unsafety: ast::Unsafety) -> &'static str {
 }
 
 #[inline]
+pub fn format_auto(is_auto: ast::IsAuto) -> &'static str {
+    match is_auto {
+        ast::IsAuto::Yes => "auto ",
+        ast::IsAuto::No => "",
+    }
+}
+
+#[inline]
 pub fn format_mutability(mutability: ast::Mutability) -> &'static str {
     match mutability {
         ast::Mutability::Mutable => "mut ",
@@ -253,15 +261,6 @@ pub fn stmt_expr(stmt: &ast::Stmt) -> Option<&ast::Expr> {
 pub fn count_newlines(input: &str) -> usize {
     // Using `as_bytes` to omit UTF-8 decoding
     input.as_bytes().iter().filter(|&&c| c == b'\n').count()
-}
-
-macro_rules! msg {
-    ($($arg:tt)*) => (
-        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-            Ok(_) => {},
-            Err(x) => panic!("Unable to write to stderr: {}", x),
-        }
-    )
 }
 
 // For format_missing and last_pos, need to use the source callsite (if applicable).

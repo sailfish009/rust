@@ -14,11 +14,12 @@ use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
 
-use checkstyle::{output_checkstyle_file, output_footer, output_header};
+use checkstyle::output_checkstyle_file;
 use config::{Config, NewlineStyle, WriteMode};
 use rustfmt_diff::{make_diff, output_modified, print_diff, Mismatch};
 use syntax::codemap::FileName;
 
+#[cfg(test)]
 use FileRecord;
 
 // Append a newline to the end of each file.
@@ -26,7 +27,8 @@ pub fn append_newline(s: &mut String) {
     s.push_str("\n");
 }
 
-pub fn write_all_files<T>(
+#[cfg(test)]
+pub(crate) fn write_all_files<T>(
     file_map: &[FileRecord],
     out: &mut T,
     config: &Config,
@@ -34,11 +36,15 @@ pub fn write_all_files<T>(
 where
     T: Write,
 {
-    output_header(out, config.write_mode()).ok();
+    if config.write_mode() == WriteMode::Checkstyle {
+        ::checkstyle::output_header(out)?;
+    }
     for &(ref filename, ref text) in file_map {
         write_file(text, filename, out, config)?;
     }
-    output_footer(out, config.write_mode()).ok();
+    if config.write_mode() == WriteMode::Checkstyle {
+        ::checkstyle::output_footer(out)?;
+    }
 
     Ok(())
 }
@@ -159,7 +165,7 @@ where
                 print_diff(
                     mismatch,
                     |line_num| format!("Diff in {} at line {}:", filename.display(), line_num),
-                    config.color(),
+                    config,
                 );
                 return Ok(has_diff);
             }
@@ -178,6 +184,20 @@ where
             let diff = create_diff(filename, text, config)?;
             output_checkstyle_file(out, filename, diff)?;
         }
+        WriteMode::Check => {
+            let filename = filename_to_path();
+            if let Ok((ori, fmt)) = source_and_formatted_text(text, filename, config) {
+                let mismatch = make_diff(&ori, &fmt, 3);
+                let has_diff = !mismatch.is_empty();
+                print_diff(
+                    mismatch,
+                    |line_num| format!("Diff in {} at line {}:", filename.display(), line_num),
+                    config,
+                );
+                return Ok(has_diff);
+            }
+        }
+        WriteMode::None => {}
     }
 
     // when we are not in diff mode, don't indicate differing files
