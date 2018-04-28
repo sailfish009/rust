@@ -51,7 +51,7 @@ use std::mem;
 use syntax::ast::{self, DUMMY_NODE_ID, Name, Ident, NodeId};
 use syntax::attr;
 use syntax::ext::hygiene::Mark;
-use syntax::symbol::{Symbol, InternedString};
+use syntax::symbol::{Symbol, LocalInternedString, InternedString};
 use syntax_pos::{DUMMY_SP, Span};
 
 use rustc_data_structures::accumulate_vec::IntoIter as AccIntoIter;
@@ -2031,7 +2031,7 @@ impl<'a, 'gcx, 'tcx> AdtDef {
     /// Due to normalization being eager, this applies even if
     /// the associated type is behind a pointer, e.g. issue #31299.
     pub fn sized_constraint(&self, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> &'tcx [Ty<'tcx>] {
-        match queries::adt_sized_constraint::try_get(tcx, DUMMY_SP, self.did) {
+        match tcx.try_get_query::<queries::adt_sized_constraint>(DUMMY_SP, self.did) {
             Ok(tys) => tys,
             Err(mut bug) => {
                 debug!("adt_sized_constraint: {:?} is recursive", self);
@@ -2463,7 +2463,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
 
     pub fn item_name(self, id: DefId) -> InternedString {
         if id.index == CRATE_DEF_INDEX {
-            self.original_crate_name(id.krate).as_str()
+            self.original_crate_name(id.krate).as_interned_str()
         } else {
             let def_key = self.def_key(id);
             // The name of a StructCtor is that of its struct parent.
@@ -2820,15 +2820,13 @@ impl_stable_hash_for!(struct self::SymbolName {
 impl SymbolName {
     pub fn new(name: &str) -> SymbolName {
         SymbolName {
-            name: Symbol::intern(name).as_str()
+            name: Symbol::intern(name).as_interned_str()
         }
     }
-}
 
-impl Deref for SymbolName {
-    type Target = str;
-
-    fn deref(&self) -> &str { &self.name }
+    pub fn as_str(&self) -> LocalInternedString {
+        self.name.as_str()
+    }
 }
 
 impl fmt::Display for SymbolName {

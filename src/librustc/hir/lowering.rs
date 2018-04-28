@@ -655,7 +655,7 @@ impl<'a> LoweringContext<'a> {
                 self.resolver.definitions().create_def_with_parent(
                     parent_id.index,
                     def_node_id,
-                    DefPathData::LifetimeDef(str_name),
+                    DefPathData::LifetimeDef(str_name.as_interned_str()),
                     DefIndexAddressSpace::High,
                     Mark::root(),
                     span,
@@ -1302,7 +1302,7 @@ impl<'a> LoweringContext<'a> {
                     self.context.resolver.definitions().create_def_with_parent(
                         self.parent,
                         def_node_id,
-                        DefPathData::LifetimeDef(name.name().as_str()),
+                        DefPathData::LifetimeDef(name.name().as_interned_str()),
                         DefIndexAddressSpace::High,
                         Mark::root(),
                         lifetime.span,
@@ -4107,15 +4107,13 @@ impl<'a> LoweringContext<'a> {
     }
 
     fn maybe_lint_bare_trait(&self, span: Span, id: NodeId, is_global: bool) {
-        if self.sess.features_untracked().dyn_trait {
-            self.sess.buffer_lint_with_diagnostic(
-                builtin::BARE_TRAIT_OBJECT,
-                id,
-                span,
-                "trait objects without an explicit `dyn` are deprecated",
-                builtin::BuiltinLintDiagnostics::BareTraitObject(span, is_global),
-            )
-        }
+        self.sess.buffer_lint_with_diagnostic(
+            builtin::BARE_TRAIT_OBJECT,
+            id,
+            span,
+            "trait objects without an explicit `dyn` are deprecated",
+            builtin::BuiltinLintDiagnostics::BareTraitObject(span, is_global),
+        )
     }
 
     fn wrap_in_try_constructor(
