@@ -8,19 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// ignore-pretty pretty-printing is unhygienic
-
-#![feature(decl_macro)]
-#![allow(unused)]
-
-macro m($S:ident, $x:ident) {
-    $S { $x: 0 }
+fn foo() -> u32 {
+    return 'label: loop { break 'label 42; };
 }
 
-mod foo {
-    struct S { x: i32 }
-
-    fn f() { ::m!(S, x); }
+fn bar() -> u32 {
+    loop { break 'label: loop { break 'label 42; }; }
+    //~^ ERROR expected identifier, found keyword `loop`
+    //~| ERROR expected type, found keyword `loop`
 }
 
-fn main() {}
+pub fn main() {
+    foo();
+}
