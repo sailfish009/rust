@@ -13,7 +13,7 @@ use syntax::ast::{FloatTy, IntTy, UintTy};
 use syntax::codemap::Span;
 use syntax::errors::DiagnosticBuilder;
 use utils::{comparisons, higher, in_constant, in_external_macro, in_macro, last_path_segment, match_def_path, match_path,
-            multispan_sugg, opt_def_id, same_tys, snippet, snippet_opt, span_help_and_lint, span_lint,
+            match_type, multispan_sugg, opt_def_id, same_tys, snippet, snippet_opt, span_help_and_lint, span_lint,
             span_lint_and_sugg, span_lint_and_then, clip, unsext, sext, int_bits};
 use utils::paths;
 use consts::{constant, Constant};
@@ -679,10 +679,10 @@ declare_clippy_lint! {
     "cast to the same type, e.g. `x as i32` where `x: i32`"
 }
 
-/// **What it does:** Checks for casts from a more-strictly-aligned pointer to a
-/// less-strictly-aligned pointer
+/// **What it does:** Checks for casts from a less-strictly-aligned pointer to a
+/// more-strictly-aligned pointer
 ///
-/// **Why is this bad?** Dereferencing the resulting pointer is undefined
+/// **Why is this bad?** Dereferencing the resulting pointer may be undefined
 /// behavior.
 ///
 /// **Known problems:** None.
@@ -695,7 +695,7 @@ declare_clippy_lint! {
 declare_clippy_lint! {
     pub CAST_PTR_ALIGNMENT,
     correctness,
-    "cast from a pointer to a less-strictly-aligned pointer"
+    "cast from a pointer to a more-strictly-aligned pointer"
 }
 
 /// Returns the size in bits of an integral type.
@@ -981,12 +981,17 @@ impl<'a, 'tcx> LateLintPass<'a, 'tcx> for CastPass {
                 if let Some(from_align) = cx.layout_of(from_ptr_ty.ty).ok().map(|a| a.align.abi());
                 if let Some(to_align) = cx.layout_of(to_ptr_ty.ty).ok().map(|a| a.align.abi());
                 if from_align < to_align;
+                // with c_void, we inherently need to trust the user
+                if ! (
+                    match_type(cx, from_ptr_ty.ty, &paths::C_VOID)
+                    || match_type(cx, from_ptr_ty.ty, &paths::C_VOID_LIBC)
+                );
                 then {
                     span_lint(
                         cx,
                         CAST_PTR_ALIGNMENT,
                         expr.span,
-                        &format!("casting from `{}` to a less-strictly-aligned pointer (`{}`)", cast_from, cast_to)
+                        &format!("casting from `{}` to a more-strictly-aligned pointer (`{}`)", cast_from, cast_to)
                     );
                 }
             }
