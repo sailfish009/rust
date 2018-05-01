@@ -172,6 +172,7 @@ HashMap
 HashSet
 Haskell
 hasn
+HelloMacro
 helloworld
 HelloWorld
 HelloWorldName
@@ -284,7 +285,10 @@ newtypes
 nitty
 nocapture
 nomicon
+nonadministrators
+nondeterministic
 nonequality
+nongeneric
 NotFound
 null's
 OCaml
@@ -314,6 +318,8 @@ portia
 powershell
 PowerShell
 powi
+preallocate
+preallocates
 preprocessing
 Preprocessing
 preprocessor
@@ -479,6 +485,7 @@ vers
 versa
 Versioning
 visualstudio
+Vlissides
 vtable
 wasn
 WeatherForecast
