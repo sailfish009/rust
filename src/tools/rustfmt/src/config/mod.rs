@@ -16,8 +16,6 @@ use std::io::{Error, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
-use {FmtError, FmtResult};
-
 use config::config_type::ConfigType;
 use config::file_lines::FileLines;
 pub use config::lists::*;
@@ -64,7 +62,7 @@ create_config! {
     where_single_line: bool, false, false, "Force where clauses to be on a single line";
 
     // Imports
-    imports_indent: IndentStyle, IndentStyle::Visual, false, "Indent of imports";
+    imports_indent: IndentStyle, IndentStyle::Block, false, "Indent of imports";
     imports_layout: ListTactic, ListTactic::Mixed, false, "Item layout inside a import block";
     merge_imports: bool, false, false, "Merge imports";
 
@@ -154,18 +152,16 @@ create_config! {
 pub fn load_config(
     file_path: Option<&Path>,
     options: Option<&CliOptions>,
-) -> FmtResult<(Config, Option<PathBuf>)> {
+) -> Result<(Config, Option<PathBuf>), Error> {
     let over_ride = match options {
         Some(opts) => config_path(opts)?,
         None => None,
     };
 
     let result = if let Some(over_ride) = over_ride {
-        Config::from_toml_path(over_ride.as_ref())
-            .map(|p| (p, Some(over_ride.to_owned())))
-            .map_err(FmtError::from)
+        Config::from_toml_path(over_ride.as_ref()).map(|p| (p, Some(over_ride.to_owned())))
     } else if let Some(file_path) = file_path {
-        Config::from_resolved_toml_path(file_path).map_err(FmtError::from)
+        Config::from_resolved_toml_path(file_path)
     } else {
         Ok((Config::default(), None))
     };
@@ -202,12 +198,15 @@ fn get_toml_path(dir: &Path) -> Result<Option<PathBuf>, Error> {
     Ok(None)
 }
 
-fn config_path(options: &CliOptions) -> FmtResult<Option<PathBuf>> {
-    let config_path_not_found = |path: &str| -> FmtResult<Option<PathBuf>> {
-        Err(FmtError::from(format!(
-            "Error: unable to find a config file for the given path: `{}`",
-            path
-        )))
+fn config_path(options: &CliOptions) -> Result<Option<PathBuf>, Error> {
+    let config_path_not_found = |path: &str| -> Result<Option<PathBuf>, Error> {
+        Err(Error::new(
+            ErrorKind::NotFound,
+            format!(
+                "Error: unable to find a config file for the given path: `{}`",
+                path
+            ),
+        ))
     };
 
     // Read the config_path and convert to parent dir if a file is provided.

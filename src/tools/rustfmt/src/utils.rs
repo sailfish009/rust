@@ -10,10 +10,13 @@
 
 use std::borrow::Cow;
 
-use syntax::ast::{self, Attribute, CrateSugar, MetaItem, MetaItemKind, NestedMetaItem,
-                  NestedMetaItemKind, Path, Visibility, VisibilityKind};
+use rustc_target::spec::abi;
+use syntax::ast::{
+    self, Attribute, CrateSugar, MetaItem, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Path,
+    Visibility, VisibilityKind,
+};
 use syntax::codemap::{BytePos, Span, NO_EXPANSION};
-use syntax::{abi, ptr};
+use syntax::ptr;
 
 use config::Color;
 use rewrite::RewriteContext;
@@ -131,6 +134,16 @@ pub fn inner_attributes(attrs: &[ast::Attribute]) -> Vec<ast::Attribute> {
 #[inline]
 pub fn outer_attributes(attrs: &[ast::Attribute]) -> Vec<ast::Attribute> {
     filter_attributes(attrs, ast::AttrStyle::Outer)
+}
+
+#[inline]
+pub fn is_single_line(s: &str) -> bool {
+    s.chars().find(|&c| c == '\n').is_none()
+}
+
+#[inline]
+pub fn first_line_contains_single_line_comment(s: &str) -> bool {
+    s.lines().next().map_or(false, |l| l.contains("//"))
 }
 
 #[inline]

@@ -1,4 +1,4 @@
-// Copyright 2014 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2018 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,9 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![no_std]
-#![feature(macro_reexport)]
+// Local module shadows `ep_lib` from extern prelude
 
-#[allow(unused_extern_crates)]
-#[macro_reexport(foo="bar")]  //~ ERROR bad macro re-export
-extern crate std;
+mod ep_lib {
+    pub struct S;
+
+    impl S {
+        pub fn internal(&self) {}
+    }
+}
+
+fn main() {
+    let s = ep_lib::S;
+    s.internal(); // OK
+}

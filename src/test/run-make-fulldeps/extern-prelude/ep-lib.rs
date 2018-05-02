@@ -8,15 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// compile-flags: --cap-lints allow
+#![crate_type = "rlib"]
 
-// This tests that the fn_must_use feature-gate warning respects the lint
-// cap. (See discussion in Issue #44213.)
+pub struct S;
 
-#![feature(rustc_attrs)]
-
-#[must_use] // (no feature-gate warning because of the lint cap!)
-fn need_to_use_it() -> bool { true }
-
-#[rustc_error]
-fn main() {} //~ ERROR compilation successful
+impl S {
+    pub fn external(&self) {}
+}

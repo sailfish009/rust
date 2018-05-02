@@ -8,14 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Test that macro re-exports item are gated by `macro_reexport` feature gate.
+// compile-flags: --extern LooksLikeExternCrate=/path/to/nowhere
 
-// aux-build:macro_reexport_1.rs
-// gate-test-macro_reexport
+mod m {
+    pub struct LooksLikeExternCrate;
+}
 
-#![crate_type = "dylib"]
-
-#[macro_reexport(reexported)]
-//~^ ERROR macros re-exports are experimental and possibly buggy
-#[macro_use] #[no_link]
-extern crate macro_reexport_1;
+fn main() {
+    // OK, speculative resolution for `unused_qualifications` doesn't try
+    // to resolve this as an extern crate and load that crate
+    let s = m::LooksLikeExternCrate {};
+}

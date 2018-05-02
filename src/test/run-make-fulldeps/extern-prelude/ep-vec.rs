@@ -1,4 +1,4 @@
-// Copyright 2014 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2017 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,9 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![no_std]
-#![feature(macro_reexport)]
+#![crate_type = "rlib"]
 
-#[allow(unused_extern_crates)]
-#[macro_reexport="foo"]  //~ ERROR bad macro re-export
-extern crate std;
+pub fn new(arg1: f32, arg2: ()) {}

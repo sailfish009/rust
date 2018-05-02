@@ -19,11 +19,15 @@ use syntax::{ast, ptr};
 use chains::rewrite_chain;
 use closures;
 use codemap::{LineRangeUtils, SpanUtils};
-use comment::{combine_strs_with_missing_comments, contains_comment, recover_comment_removed,
-              rewrite_comment, rewrite_missing_comment, CharClasses, FindUncommented};
+use comment::{
+    combine_strs_with_missing_comments, contains_comment, recover_comment_removed, rewrite_comment,
+    rewrite_missing_comment, CharClasses, FindUncommented,
+};
 use config::{Config, ControlBraceStyle, IndentStyle};
-use lists::{definitive_tactic, itemize_list, shape_for_tactic, struct_lit_formatting,
-            struct_lit_shape, struct_lit_tactic, write_list, ListFormatting, ListItem, Separator};
+use lists::{
+    definitive_tactic, itemize_list, shape_for_tactic, struct_lit_formatting, struct_lit_shape,
+    struct_lit_tactic, write_list, ListFormatting, ListItem, Separator,
+};
 use macros::{rewrite_macro, MacroArg, MacroPosition};
 use matches::rewrite_match;
 use overflow;
@@ -33,9 +37,11 @@ use shape::{Indent, Shape};
 use spanned::Spanned;
 use string::{rewrite_string, StringFormat};
 use types::{can_be_overflowed_type, rewrite_path, PathContext};
-use utils::{colon_spaces, contains_skip, count_newlines, first_line_width, inner_attributes,
-            last_line_extendable, last_line_width, mk_sp, outer_attributes, paren_overhead,
-            ptr_vec_to_ref_vec, semicolon_for_stmt, wrap_str};
+use utils::{
+    colon_spaces, contains_skip, count_newlines, first_line_width, inner_attributes,
+    last_line_extendable, last_line_width, mk_sp, outer_attributes, paren_overhead,
+    ptr_vec_to_ref_vec, semicolon_for_stmt, wrap_str,
+};
 use vertical::rewrite_with_alignment;
 use visitor::FmtVisitor;
 
@@ -70,7 +76,7 @@ pub fn format_expr(
             expr.span,
             context,
             shape,
-            None,
+            choose_separator_tactic(context, expr.span),
             None,
         ),
         ast::ExprKind::Lit(ref l) => rewrite_literal(context, l, shape),
@@ -1336,6 +1342,18 @@ const SPECIAL_MACRO_WHITELIST: &[(&str, usize)] = &[
     ("debug_assert_ne!", 2),
 ];
 
+fn choose_separator_tactic(context: &RewriteContext, span: Span) -> Option<SeparatorTactic> {
+    if context.inside_macro() {
+        if span_ends_with_comma(context, span) {
+            Some(SeparatorTactic::Always)
+        } else {
+            Some(SeparatorTactic::Never)
+        }
+    } else {
+        None
+    }
+}
+
 pub fn rewrite_call(
     context: &RewriteContext,
     callee: &str,
@@ -1350,15 +1368,7 @@ pub fn rewrite_call(
         shape,
         span,
         context.config.width_heuristics().fn_call_width,
-        if context.inside_macro() {
-            if span_ends_with_comma(context, span) {
-                Some(SeparatorTactic::Always)
-            } else {
-                Some(SeparatorTactic::Never)
-            }
-        } else {
-            None
-        },
+        choose_separator_tactic(context, span),
     )
 }
 
@@ -1436,11 +1446,14 @@ pub fn is_nested_call(expr: &ast::Expr) -> bool {
 pub fn span_ends_with_comma(context: &RewriteContext, span: Span) -> bool {
     let mut result: bool = Default::default();
     let mut prev_char: char = Default::default();
+    let closing_delimiters = &[')', '}', ']'];
 
     for (kind, c) in CharClasses::new(context.snippet(span).chars()) {
         match c {
             _ if kind.is_comment() || c.is_whitespace() => continue,
-            ')' | '}' => result = result && prev_char != ')' && prev_char != '}',
+            c if closing_delimiters.contains(&c) => {
+                result &= !closing_delimiters.contains(&prev_char);
+            }
             ',' => result = true,
             _ => result = false,
         }

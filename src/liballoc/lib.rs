@@ -96,7 +96,7 @@
 #![feature(dropck_eyepatch)]
 #![feature(exact_size_is_empty)]
 #![feature(fmt_internals)]
-#![feature(fn_must_use)]
+#![cfg_attr(stage0, feature(fn_must_use))]
 #![feature(from_ref)]
 #![feature(fundamental)]
 #![feature(lang_items)]
@@ -122,7 +122,7 @@
 #![feature(on_unimplemented)]
 #![feature(exact_chunks)]
 #![feature(pointer_methods)]
-#![feature(inclusive_range_fields)]
+#![feature(inclusive_range_methods)]
 #![cfg_attr(stage0, feature(generic_param_attrs))]
 #![feature(rustc_const_unstable)]
 
