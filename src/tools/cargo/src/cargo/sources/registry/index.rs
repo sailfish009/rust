@@ -113,13 +113,19 @@ impl<'cfg> RegistryIndex<'cfg> {
             // interpretation of each line here and older cargo will simply
             // ignore the new lines.
             ret.extend(lines.filter_map(|line| {
-                self.parse_registry_package(line).ok().and_then(|v| {
-                    if online || load.is_crate_downloaded(v.0.package_id()) {
-                        Some(v)
-                    } else {
-                        None
+                let (summary, locked) = match self.parse_registry_package(line) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        info!("failed to parse `{}` registry package: {}", name, e);
+                        trace!("line: {}", line);
+                        return None
                     }
-                })
+                };
+                if online || load.is_crate_downloaded(summary.package_id()) {
+                    Some((summary, locked))
+                } else {
+                    None
+                }
             }));
 
             Ok(())
@@ -153,7 +159,7 @@ impl<'cfg> RegistryIndex<'cfg> {
         let deps = deps.into_iter()
             .map(|dep| dep.into_dep(&self.source_id))
             .collect::<CargoResult<Vec<_>>>()?;
-        let summary = Summary::new(pkgid, deps, features, links)?;
+        let summary = Summary::new(pkgid, deps, features, links, false)?;
         let summary = summary.set_checksum(cksum.clone());
         if self.hashes.contains_key(&name[..]) {
             self.hashes.get_mut(&name[..]).unwrap().insert(vers, cksum);

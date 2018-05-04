@@ -17,7 +17,7 @@ use macros::{InvocationData, LegacyScope};
 use resolve_imports::ImportDirective;
 use resolve_imports::ImportDirectiveSubclass::{self, GlobImport, SingleImport};
 use {Module, ModuleData, ModuleKind, NameBinding, NameBindingKind, ToNameBinding};
-use {Resolver, ResolverArenas};
+use {PerNS, Resolver, ResolverArenas};
 use Namespace::{self, TypeNS, ValueNS, MacroNS};
 use {resolve_error, resolve_struct_error, ResolutionError};
 
@@ -174,7 +174,11 @@ impl<'a> Resolver<'a> {
                 let subclass = SingleImport {
                     target: ident,
                     source,
-                    result: self.per_ns(|_, _| Cell::new(Err(Undetermined))),
+                    result: PerNS {
+                        type_ns: Cell::new(Err(Undetermined)),
+                        value_ns: Cell::new(Err(Undetermined)),
+                        macro_ns: Cell::new(Err(Undetermined)),
+                    },
                     type_ns_only,
                 };
                 self.add_import_directive(
@@ -702,7 +706,7 @@ impl<'a> Resolver<'a> {
                 match attr.meta_item_list() {
                     Some(names) => for attr in names {
                         if let Some(word) = attr.word() {
-                            imports.imports.push((word.ident.name, attr.span()));
+                            imports.imports.push((word.name(), attr.span()));
                         } else {
                             span_err!(self.session, attr.span(), E0466, "bad macro import");
                         }

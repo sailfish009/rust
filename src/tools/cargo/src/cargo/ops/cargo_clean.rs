@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use core::compiler::{BuildConfig, Context, Kind, Unit};
+use core::compiler::{BuildConfig, BuildContext, Context, Kind, Unit};
 use core::profiles::ProfileFor;
 use core::Workspace;
 use ops::{self, CompileMode};
@@ -17,12 +17,21 @@ pub struct CleanOptions<'a> {
     pub target: Option<String>,
     /// Whether to clean the release directory
     pub release: bool,
+    /// Whether to just clean the doc directory
+    pub doc: bool,
 }
 
 /// Cleans the project from build artifacts.
 pub fn clean(ws: &Workspace, opts: &CleanOptions) -> CargoResult<()> {
     let target_dir = ws.target_dir();
     let config = ws.config();
+
+    // If the doc option is set, we just want to delete the doc directory.
+    if opts.doc {
+        let target_dir = target_dir.join("doc");
+        let target_dir = target_dir.into_path_unlocked();
+        return rm_rf(&target_dir, config);
+    }
 
     // If we have a spec, then we need to delete some packages, otherwise, just
     // remove the whole target directory and be done with it!
@@ -81,15 +90,16 @@ pub fn clean(ws: &Workspace, opts: &CleanOptions) -> CargoResult<()> {
 
     let mut build_config = BuildConfig::new(config, Some(1), &opts.target, None)?;
     build_config.release = opts.release;
-    let mut cx = Context::new(
+    let bcx = BuildContext::new(
         ws,
         &resolve,
         &packages,
         opts.config,
-        build_config,
+        &build_config,
         profiles,
         None,
     )?;
+    let mut cx = Context::new(config, &bcx)?;
     cx.prepare_units(None, &units)?;
 
     for unit in units.iter() {
