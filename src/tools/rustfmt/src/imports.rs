@@ -693,18 +693,19 @@ fn rewrite_nested_use_tree(
                 _ => false,
             })
     });
-    let (tactic, remaining_width) = if has_nested_list {
-        (DefinitiveListTactic::Vertical, 0)
+
+    let remaining_width = if has_nested_list {
+        0
     } else {
-        let remaining_width = shape.width.checked_sub(2).unwrap_or(0);
-        let tactic = definitive_tactic(
-            &list_items,
-            context.config.imports_layout(),
-            Separator::Comma,
-            remaining_width,
-        );
-        (tactic, remaining_width)
+        shape.width.checked_sub(2).unwrap_or(0)
     };
+
+    let tactic = definitive_tactic(
+        &list_items,
+        context.config.imports_layout(),
+        Separator::Comma,
+        remaining_width,
+    );
 
     let ends_with_newline = context.config.imports_indent() == IndentStyle::Block
         && tactic != DefinitiveListTactic::Horizontal;
@@ -799,9 +800,11 @@ mod test {
             fn bump(&mut self) {
                 self.input.next().unwrap();
             }
+
             fn eat(&mut self, c: char) {
                 assert!(self.input.next().unwrap() == c);
             }
+
             fn push_segment(
                 result: &mut Vec<UseSegment>,
                 buf: &mut String,
@@ -825,6 +828,7 @@ mod test {
                     }
                 }
             }
+
             fn parse_in_list(&mut self) -> UseTree {
                 let mut result = vec![];
                 let mut buf = String::new();

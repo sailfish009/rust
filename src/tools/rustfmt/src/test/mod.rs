@@ -568,6 +568,7 @@ struct CharsIgnoreNewlineRepr<'a>(Peekable<Chars<'a>>);
 
 impl<'a> Iterator for CharsIgnoreNewlineRepr<'a> {
     type Item = char;
+
     fn next(&mut self) -> Option<char> {
         self.0.next().map(|c| {
             if c == '\r' {
@@ -858,52 +859,54 @@ fn configuration_snippet_tests() {
 }
 
 struct TempFile {
-    file_name: &'static str,
+    path: PathBuf,
 }
 
 fn make_temp_file(file_name: &'static str) -> TempFile {
+    use std::env::var;
     use std::fs::File;
 
-    let mut file = File::create(file_name).expect("Couldn't create temp file");
+    let target_dir = var("CARGO_TARGET_DIR").unwrap_or_else(|_| ".".to_owned());
+    let path = Path::new(&target_dir).join(file_name);
+
+    let mut file = File::create(&path).expect("Couldn't create temp file");
     let content = "fn main() {}\n";
     file.write_all(content.as_bytes())
         .expect("Couldn't write temp file");
-    TempFile { file_name }
+    TempFile { path }
 }
 
 impl Drop for TempFile {
     fn drop(&mut self) {
         use std::fs::remove_file;
-        remove_file(self.file_name).expect("Couldn't delete temp file");
+        remove_file(&self.path).expect("Couldn't delete temp file");
     }
 }
 
 #[test]
 fn verify_check_works() {
-    let file_name = "temp_check.rs";
-    let _temp_file = make_temp_file(file_name);
+    let temp_file = make_temp_file("temp_check.rs");
     assert_cli::Assert::command(&[
         "cargo",
         "run",
         "--bin=rustfmt",
         "--",
         "--write-mode=check",
-        file_name,
+        temp_file.path.to_str().unwrap(),
     ]).succeeds()
         .unwrap();
 }
 
 #[test]
 fn verify_diff_works() {
-    let file_name = "temp_diff.rs";
-    let _temp_file = make_temp_file(file_name);
+    let temp_file = make_temp_file("temp_diff.rs");
     assert_cli::Assert::command(&[
         "cargo",
         "run",
         "--bin=rustfmt",
         "--",
         "--write-mode=diff",
-        file_name,
+        temp_file.path.to_str().unwrap(),
     ]).succeeds()
         .unwrap();
 }
