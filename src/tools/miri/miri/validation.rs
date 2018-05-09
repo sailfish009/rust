@@ -3,7 +3,7 @@ use rustc::hir::Mutability::*;
 use rustc::mir::{self, ValidationOp, ValidationOperand};
 use rustc::mir::interpret::GlobalId;
 use rustc::ty::{self, Ty, TypeFoldable, TyCtxt, Instance};
-use rustc::ty::layout::LayoutOf;
+use rustc::ty::layout::{LayoutOf, PrimitiveExt};
 use rustc::ty::subst::{Substs, Subst};
 use rustc::traits::{self, TraitEngine};
 use rustc::infer::InferCtxt;
@@ -455,7 +455,7 @@ impl<'a, 'mir, 'tcx: 'mir + 'a> EvalContextExt<'tcx> for EvalContext<'a, 'mir, '
                     }
 
                     // Discriminant field for enums (where applicable).
-                    Variants::Tagged { ref discr, .. } |
+                    Variants::Tagged { tag: ref discr, .. } |
                     Variants::NicheFilling { niche: ref discr, .. } => {
                         assert_eq!(i, 0);
                         return Ok(discr.value.to_ty(tcx))

@@ -2,12 +2,12 @@
 
 [![Build Status](https://travis-ci.org/rust-lang-nursery/rust-clippy.svg?branch=master)](https://travis-ci.org/rust-lang-nursery/rust-clippy)
 [![Windows build status](https://ci.appveyor.com/api/projects/status/github/rust-lang-nursery/rust-clippy?svg=true)](https://ci.appveyor.com/project/rust-lang-nursery/rust-clippy)
-[![Current Version](http://meritbadge.herokuapp.com/clippy)](https://crates.io/crates/clippy)
+[![Current Version](https://meritbadge.herokuapp.com/clippy)](https://crates.io/crates/clippy)
 [![License: MPL-2.0](https://img.shields.io/crates/l/clippy.svg)](#license)
 
 A collection of lints to catch common mistakes and improve your [Rust](https://github.com/rust-lang/rust) code.
 
-[There are 257 lints included in this crate!](https://rust-lang-nursery.github.io/rust-clippy/master/index.html)
+[There are 258 lints included in this crate!](https://rust-lang-nursery.github.io/rust-clippy/master/index.html)
 
 We have a bunch of lint categories to allow you to choose how much clippy is supposed to ~~annoy~~ help you:
 
@@ -17,6 +17,7 @@ We have a bunch of lint categories to allow you to choose how much clippy is sup
 * `clippy_style` (code that should be written in a more idiomatic way)
 * `clippy_complexity` (code that does something simple but in a complex way)
 * `clippy_perf` (code that can be written in a faster way)
+* `clippy_cargo` (checks against the cargo manifest)
 * **`clippy_correctness`** (code that is just outright wrong or very very useless)
 
 More to come, please [file an issue](https://github.com/rust-lang-nursery/rust-clippy/issues) if you have ideas!

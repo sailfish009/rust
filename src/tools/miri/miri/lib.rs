@@ -1,7 +1,8 @@
 #![feature(
     rustc_private,
     catch_expr,
-    inclusive_range_fields
+    inclusive_range_fields,
+    inclusive_range_methods,
 )]
 
 #[macro_use]
@@ -10,8 +11,9 @@ extern crate log;
 // From rustc.
 #[macro_use]
 extern crate rustc;
-extern crate rustc_mir;
 extern crate rustc_data_structures;
+extern crate rustc_mir;
+extern crate rustc_target;
 extern crate syntax;
 extern crate regex;
 #[macro_use]
@@ -143,7 +145,7 @@ pub fn eval_main<'a, 'tcx: 'a>(
                 main_instance,
                 main_mir.span,
                 main_mir,
-                Place::undef(),
+                Place::from_primval_ptr(PrimVal::Bytes(1).into(), ty::layout::Align::from_bytes(1, 1).unwrap()),
                 StackPopCleanup::None,
             )?;
 
@@ -175,6 +177,16 @@ pub fn eval_main<'a, 'tcx: 'a>(
         Err(mut e) => {
             ecx.tcx.sess.err(&e.to_string());
             ecx.report(&mut e, true, None);
+            for (i, frame) in ecx.stack().iter().enumerate() {
+                trace!("-------------------");
+                trace!("Frame {}", i);
+                trace!("    return: {:#?}", frame.return_place);
+                for (i, local) in frame.locals.iter().enumerate() {
+                    if let Some(local) = local {
+                        trace!("    local {}: {:?}", i, local);
+                    }
+                }
+            }
         }
     }
 }
@@ -442,10 +454,12 @@ impl<'mir, 'tcx: 'mir> Machine<'mir, 'tcx> for Evaluator<'tcx> {
     }
 
     fn validation_op<'a>(
-        ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
-        op: ::rustc::mir::ValidationOp,
-        operand: &::rustc::mir::ValidationOperand<'tcx, ::rustc::mir::Place<'tcx>>,
+        _ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        _op: ::rustc::mir::ValidationOp,
+        _operand: &::rustc::mir::ValidationOperand<'tcx, ::rustc::mir::Place<'tcx>>,
     ) -> EvalResult<'tcx> {
-        ecx.validation_op(op, operand)
+        // FIXME: prevent this from ICEing
+        //ecx.validation_op(op, operand)
+        Ok(())
     }
 }
