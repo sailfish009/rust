@@ -2,7 +2,11 @@ use std::env;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::PathBuf;
+use std::io;
+use std::thread;
+use std::time::Duration;
 
+use cargo::util::paths::remove_dir_all;
 use cargotest::{rustc_host, sleep_ms};
 use cargotest::support::{cross_compile, execs, project};
 use cargotest::support::paths::CargoPathExt;
@@ -3742,9 +3746,6 @@ fn rename_with_link_search_path() {
             name = "bar"
             version = "0.5.0"
             authors = []
-
-            [profile.dev]
-            debug = false
         "#,
         )
         .file(
@@ -3812,7 +3813,8 @@ fn rename_with_link_search_path() {
         &root.join("foo.dll.lib"),
         p2.root().join("foo.dll.lib"),
     ));
-    fs::remove_dir_all(p.root()).unwrap();
+    remove_dir_all(p.root())
+        .unwrap();
 
     // Everything should work the first time
     assert_that(p2.cargo("run"), execs().with_status(0));
@@ -3822,7 +3824,28 @@ fn rename_with_link_search_path() {
     let mut new = p2.root();
     new.pop();
     new.push("bar2");
-    fs::rename(p2.root(), &new).unwrap();
+
+    // For whatever reason on Windows right after we execute a binary it's very
+    // unlikely that we're able to successfully delete or rename that binary.
+    // It's not really clear why this is the case or if it's a bug in Cargo
+    // holding a handle open too long. In an effort to reduce the flakiness of
+    // this test though we throw this in a loop
+    //
+    // For some more information see #5481 and rust-lang/rust#48775
+    let mut i = 0;
+    loop {
+        let error = match fs::rename(p2.root(), &new) {
+            Ok(()) => break,
+            Err(e) => e,
+        };
+        i += 1;
+        if !cfg!(windows) || error.kind() != io::ErrorKind::PermissionDenied || i > 10 {
+            panic!("failed to rename: {}", error);
+        }
+        println!("assuming {} is spurious, waiting to try again", error);
+        thread::sleep(Duration::from_millis(100));
+    }
+
     assert_that(
         p2.cargo("run").cwd(&new),
         execs().with_status(0).with_stderr(
@@ -3830,6 +3853,152 @@ fn rename_with_link_search_path() {
 [FINISHED] [..]
 [RUNNING] [..]
 ",
+        ),
+    );
+}
+
+#[test]
+fn optional_build_script_dep() {
+    let p = project("foo")
+        .file(
+            "Cargo.toml",
+            r#"
+                [project]
+                name = "foo"
+                version = "0.5.0"
+                authors = []
+
+                [dependencies]
+                bar = { path = "bar", optional = true }
+
+                [build-dependencies]
+                bar = { path = "bar", optional = true }
+            "#,
+        )
+        .file("build.rs", r#"
+            #[cfg(feature = "bar")]
+            extern crate bar;
+
+            fn main() {
+                #[cfg(feature = "bar")] {
+                    println!("cargo:rustc-env=FOO={}", bar::bar());
+                    return
+                }
+                println!("cargo:rustc-env=FOO=0");
+            }
+        "#)
+        .file(
+            "src/main.rs",
+            r#"
+                #[cfg(feature = "bar")]
+                extern crate bar;
+
+                fn main() {
+                    println!("{}", env!("FOO"));
+                }
+            "#,
+        )
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [project]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+            "#,
+        )
+        .file(
+            "bar/src/lib.rs",
+            r#"
+                pub fn bar() -> u32 { 1 }
+            "#,
+        );
+    let p = p.build();
+
+    assert_that(p.cargo("run"), execs().with_status(0).with_stdout("0\n"));
+    assert_that(
+        p.cargo("run --features bar"),
+        execs().with_status(0).with_stdout("1\n"),
+    );
+}
+
+
+#[test]
+fn optional_build_dep_and_required_normal_dep() {
+    let p = project("foo")
+        .file(
+            "Cargo.toml",
+            r#"
+            [package]
+            name = "foo"
+            version = "0.1.0"
+            authors = []
+
+            [dependencies]
+            bar = { path = "./bar", optional = true }
+
+            [build-dependencies]
+            bar = { path = "./bar" }
+            "#,
+        )
+        .file(
+            "build.rs",
+            r#"
+            extern crate bar;
+            fn main() { bar::bar(); }
+        "#,
+        )
+        .file(
+            "src/main.rs",
+            r#"
+                #[cfg(feature = "bar")]
+                extern crate bar;
+
+                fn main() {
+                    #[cfg(feature = "bar")] {
+                        println!("{}", bar::bar());
+                    }
+                    #[cfg(not(feature = "bar"))] {
+                        println!("0");
+                    }
+                }
+            "#,
+        )
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [project]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+            "#,
+        )
+        .file(
+            "bar/src/lib.rs",
+            r#"
+                pub fn bar() -> u32 { 1 }
+            "#,
+        );
+    let p = p.build();
+
+    assert_that(
+        p.cargo("run"),
+        execs().with_status(0).with_stdout("0").with_stderr(
+            "\
+[COMPILING] bar v0.5.0 ([..])
+[COMPILING] foo v0.1.0 ([..])
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+[RUNNING] `[..]foo[EXE]`",
+        ),
+    );
+
+    assert_that(
+        p.cargo("run --all-features"),
+        execs().with_status(0).with_stdout("1").with_stderr(
+            "\
+[COMPILING] foo v0.1.0 ([..])
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+[RUNNING] `[..]foo[EXE]`",
         ),
     );
 }

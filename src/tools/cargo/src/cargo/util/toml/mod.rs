@@ -380,8 +380,42 @@ pub struct TomlProfile {
     pub panic: Option<String>,
     pub overflow_checks: Option<bool>,
     pub incremental: Option<bool>,
-    pub overrides: Option<BTreeMap<String, TomlProfile>>,
+    pub overrides: Option<BTreeMap<ProfilePackageSpec, TomlProfile>>,
     pub build_override: Option<Box<TomlProfile>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub enum ProfilePackageSpec {
+    Spec(PackageIdSpec),
+    All,
+}
+
+impl ser::Serialize for ProfilePackageSpec {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        match *self {
+            ProfilePackageSpec::Spec(ref spec) => spec.serialize(s),
+            ProfilePackageSpec::All => "*".serialize(s),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for ProfilePackageSpec {
+    fn deserialize<D>(d: D) -> Result<ProfilePackageSpec, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let string = String::deserialize(d)?;
+        if string == "*" {
+            Ok(ProfilePackageSpec::All)
+        } else {
+            PackageIdSpec::parse(&string)
+                .map_err(de::Error::custom)
+                .map(|s| ProfilePackageSpec::Spec(s))
+        }
+    }
 }
 
 impl TomlProfile {
@@ -416,6 +450,9 @@ impl TomlProfile {
         }
 
         match name {
+            "doc" => {
+                warnings.push("profile `doc` is deprecated and has no effect".to_string());
+            }
             "test" | "bench" => {
                 if self.panic.is_some() {
                     warnings.push(format!("`panic` setting is ignored for `{}` profile", name))
@@ -558,7 +595,7 @@ pub struct TomlProject {
     license_file: Option<String>,
     repository: Option<String>,
     metadata: Option<toml::Value>,
-    rust: Option<String>,
+    edition: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -719,15 +756,12 @@ impl TomlManifest {
 
         let pkgid = project.to_package_id(source_id)?;
 
-        let edition = if let Some(ref edition) = project.rust {
+        let edition = if let Some(ref edition) = project.edition {
             features
                 .require(Feature::edition())
                 .chain_err(|| "editions are unstable")?;
-            if let Ok(edition) = edition.parse() {
-                edition
-            } else {
-                bail!("the `rust` key must be one of: `2015`, `2018`")
-            }
+            edition.parse()
+                .chain_err(|| "failed to parse the `edition` key")?
         } else {
             Edition::Edition2015
         };

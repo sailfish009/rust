@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use core::compiler::{BuildConfig, BuildContext, Context, Kind, Unit};
+use core::compiler::{BuildConfig, BuildContext, CompileMode, Context, Kind, Unit};
 use core::profiles::ProfileFor;
 use core::Workspace;
-use ops::{self, CompileMode};
+use ops;
 use util::errors::{CargoResult, CargoResultExt};
 use util::paths;
 use util::Config;
@@ -60,7 +60,7 @@ pub fn clean(ws: &Workspace, opts: &CleanOptions) -> CargoResult<()> {
                     for profile_for in ProfileFor::all_values() {
                         let profile = if mode.is_run_custom_build() {
                             profiles.get_profile_run_custom_build(&profiles.get_profile(
-                                &pkg.name(),
+                                pkg.package_id(),
                                 ws.is_member(pkg),
                                 *profile_for,
                                 CompileMode::Build,
@@ -68,7 +68,7 @@ pub fn clean(ws: &Workspace, opts: &CleanOptions) -> CargoResult<()> {
                             ))
                         } else {
                             profiles.get_profile(
-                                &pkg.name(),
+                                pkg.package_id(),
                                 ws.is_member(pkg),
                                 *profile_for,
                                 *mode,
@@ -88,7 +88,7 @@ pub fn clean(ws: &Workspace, opts: &CleanOptions) -> CargoResult<()> {
         }
     }
 
-    let mut build_config = BuildConfig::new(config, Some(1), &opts.target, None)?;
+    let mut build_config = BuildConfig::new(config, Some(1), &opts.target, CompileMode::Build)?;
     build_config.release = opts.release;
     let bcx = BuildContext::new(
         ws,

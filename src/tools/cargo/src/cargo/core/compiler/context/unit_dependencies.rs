@@ -15,11 +15,10 @@
 //! (for example, with and without tests), so we actually build a dependency
 //! graph of `Unit`s, which capture these properties.
 
-use super::{BuildContext, Kind, Unit};
+use super::{BuildContext, CompileMode, Kind, Unit};
 use core::dependency::Kind as DepKind;
 use core::profiles::ProfileFor;
 use core::{Package, Target};
-use ops::CompileMode;
 use std::collections::HashMap;
 use CargoResult;
 
@@ -35,7 +34,7 @@ pub fn build_unit_dependencies<'a, 'cfg>(
         // cleared, and avoid building the lib thrice (once with `panic`, once
         // without, once for --test).  In particular, the lib included for
         // doctests and examples are `Build` mode here.
-        let profile_for = if unit.mode.is_any_test() || bcx.build_config.test {
+        let profile_for = if unit.mode.is_any_test() || bcx.build_config.test() {
             ProfileFor::TestDependency
         } else {
             ProfileFor::Any
@@ -123,7 +122,7 @@ fn compute_deps<'a, 'b, 'cfg>(
             true
         })
     }).filter_map(|(id, _)| match bcx.get_package(id) {
-            Ok(pkg) => pkg.targets().iter().find(|t| t.is_lib()).map(|t| {
+            Ok(pkg) => pkg.lib_target().map(|t| {
                 let mode = check_or_build_mode(&unit.mode, t);
                 let unit = new_unit(bcx, pkg, t, profile_for, unit.kind.for_target(t), mode);
                 Ok((unit, profile_for))
@@ -223,7 +222,7 @@ fn compute_deps_doc<'a, 'cfg>(
     let mut ret = Vec::new();
     for dep in deps {
         let dep = dep?;
-        let lib = match dep.targets().iter().find(|t| t.is_lib()) {
+        let lib = match dep.lib_target() {
             Some(lib) => lib,
             None => continue,
         };
@@ -330,7 +329,7 @@ fn new_unit<'a>(
     mode: CompileMode,
 ) -> Unit<'a> {
     let profile = bcx.profiles.get_profile(
-        &pkg.name(),
+        &pkg.package_id(),
         bcx.ws.is_member(pkg),
         profile_for,
         mode,

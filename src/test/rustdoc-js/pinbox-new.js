@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2018 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,10 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Test that Vec::new() can be used for constants
+// exact-check
 
-#![feature(const_vec_new)]
+const QUERY = 'pinbox::new';
 
-const MY_VEC: Vec<usize> = Vec::new();
-
-pub fn main() {}
+const EXPECTED = {
+    'others': [
+        { 'path': 'std::boxed::PinBox', 'name': 'new' },
+        { 'path': 'alloc::boxed::PinBox', 'name': 'new' },
+    ],
+};

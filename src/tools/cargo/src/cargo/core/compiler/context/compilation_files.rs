@@ -268,7 +268,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
                         crate_type,
                         flavor,
                         unit.target.kind(),
-                        bcx.build_config.target_triple(),
+                        bcx.target_triple(),
                     )?;
 
                     match file_types {
@@ -324,14 +324,14 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
                      does not support these crate types",
                     unsupported.join(", "),
                     unit.pkg,
-                    bcx.build_config.target_triple()
+                    bcx.target_triple()
                 )
             }
             bail!(
                 "cannot compile `{}` as the target `{}` does not \
                  support any of the output crate types",
                 unit.pkg,
-                bcx.build_config.target_triple()
+                bcx.target_triple()
             );
         }
         info!("Target filenames: {:?}", ret);
@@ -384,7 +384,7 @@ fn compute_metadata<'a, 'cfg>(
     let __cargo_default_lib_metadata = env::var("__CARGO_DEFAULT_LIB_METADATA");
     if !(unit.mode.is_any_test() || unit.mode.is_check())
         && (unit.target.is_dylib() || unit.target.is_cdylib()
-            || (unit.target.is_bin() && bcx.build_config.target_triple().starts_with("wasm32-")))
+            || (unit.target.is_bin() && bcx.target_triple().starts_with("wasm32-")))
         && unit.pkg.package_id().source_id().is_path()
         && __cargo_default_lib_metadata.is_err()
     {
@@ -427,6 +427,7 @@ fn compute_metadata<'a, 'cfg>(
     // panic=abort and panic=unwind artifacts, additionally with various
     // settings like debuginfo and whatnot.
     unit.profile.hash(&mut hasher);
+    cx.used_in_plugin.contains(unit).hash(&mut hasher);
     unit.mode.hash(&mut hasher);
     if let Some(ref args) = bcx.extra_args_for(unit) {
         args.hash(&mut hasher);
@@ -442,7 +443,7 @@ fn compute_metadata<'a, 'cfg>(
     unit.target.name().hash(&mut hasher);
     unit.target.kind().hash(&mut hasher);
 
-    bcx.build_config.rustc.verbose_version.hash(&mut hasher);
+    bcx.rustc.verbose_version.hash(&mut hasher);
 
     // Seed the contents of __CARGO_DEFAULT_LIB_METADATA to the hasher if present.
     // This should be the release channel, to get a different hash for each channel.

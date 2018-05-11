@@ -33,12 +33,18 @@ pub fn assert_instr(
     };
 
     let instr = &invoc.instr;
-    let maybe_ignore = if cfg!(optimized) {
+    let name = &func.ident;
+
+    // Disable assert_instr for x86 targets compiled with avx enabled, which
+    // causes LLVM to generate different intrinsics that the ones we are testing
+    // for.
+    let disable_assert_instr = std::env::var("STDSIMD_DISABLE_ASSERT_INSTR").is_ok();
+    let maybe_ignore = if cfg!(optimized) && !disable_assert_instr {
         TokenStream::empty()
     } else {
         (quote! { #[ignore] }).into()
     };
-    let name = &func.ident;
+
     use quote::ToTokens;
     let instr_str = instr
         .clone()
@@ -137,7 +143,7 @@ struct Invoc {
 }
 
 impl syn::synom::Synom for Invoc {
-    named!(parse -> Self, map!(parens!(do_parse!(
+    named!(parse -> Self, do_parse!(
         instr: syn!(syn::Expr) >>
         args: many0!(do_parse!(
             syn!(syn::token::Comma) >>
@@ -150,7 +156,7 @@ impl syn::synom::Synom for Invoc {
             instr,
             args,
         })
-    )), |p| p.1));
+    ));
 }
 
 struct Append<T>(T);
