@@ -1,4 +1,4 @@
-// Copyright 2017 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2018 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,13 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// Tests that linking to C++ code with global destructors works.
+
+extern { fn get() -> u32; }
+
 fn main() {
-}
-
-fn foo<T>(x: T, y: T) {
-    let z = x + y; //~ ERROR binary operation `+` cannot be applied to type `T`
-}
-
-fn bar<T>(x: T) {
-    x += x; //~ ERROR binary assignment operation `+=` cannot be applied to type `T`
+    let i = unsafe { get() };
+    assert_eq!(i, 1234);
 }

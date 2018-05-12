@@ -1,4 +1,4 @@
-// Copyright 2017 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2018 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,13 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-fn main() {
-}
+#include <stdint.h>
 
-fn foo<T>(x: T, y: T) {
-    let z = x + y; //~ ERROR binary operation `+` cannot be applied to type `T`
-}
+struct A {
+    A() { v = 1234; }
+    ~A() { v = 1; }
+    uint32_t v;
+};
 
-fn bar<T>(x: T) {
-    x += x; //~ ERROR binary assignment operation `+=` cannot be applied to type `T`
+A a;
+
+extern "C" {
+    uint32_t get() {
+        return a.v;
+    }
 }

@@ -743,7 +743,7 @@ struct FixedOffsetVar {
 
 fn is_slice_like<'a, 'tcx>(cx: &LateContext<'a, 'tcx>, ty: Ty) -> bool {
     let is_slice = match ty.sty {
-        ty::TyRef(_, ref subty) => is_slice_like(cx, subty.ty),
+        ty::TyRef(_, subty, _) => is_slice_like(cx, subty),
         ty::TySlice(..) | ty::TyArray(..) => true,
         _ => false,
     };
@@ -888,7 +888,7 @@ fn detect_manual_memcpy<'a, 'tcx>(
         start: Some(start),
         ref end,
         limits,
-    }) = higher::range(arg)
+    }) = higher::range(cx, arg)
     {
         // the var must be a single name
         if let PatKind::Binding(_, canonical_id, _, _) = pat.node {
@@ -982,7 +982,7 @@ fn check_for_loop_range<'a, 'tcx>(
         start: Some(start),
         ref end,
         limits,
-    }) = higher::range(arg)
+    }) = higher::range(cx, arg)
     {
         // the var must be a single name
         if let PatKind::Binding(_, canonical_id, ref ident, _) = pat.node {
@@ -1118,7 +1118,7 @@ fn check_for_loop_reverse_range<'a, 'tcx>(cx: &LateContext<'a, 'tcx>, arg: &'tcx
         start: Some(start),
         end: Some(end),
         limits,
-    }) = higher::range(arg)
+    }) = higher::range(cx, arg)
     {
         // ...and both sides are compile-time constant integers...
         if let Some((start_idx, _)) = constant(cx, start) {
@@ -1365,9 +1365,9 @@ fn check_for_loop_over_map_kv<'a, 'tcx>(
         if pat.len() == 2 {
             let arg_span = arg.span;
             let (new_pat_span, kind, ty, mutbl) = match cx.tables.expr_ty(arg).sty {
-                ty::TyRef(_, ref tam) => match (&pat[0].node, &pat[1].node) {
-                    (key, _) if pat_is_wild(key, body) => (pat[1].span, "value", tam.ty, tam.mutbl),
-                    (_, value) if pat_is_wild(value, body) => (pat[0].span, "key", tam.ty, MutImmutable),
+                ty::TyRef(_, ty, mutbl) => match (&pat[0].node, &pat[1].node) {
+                    (key, _) if pat_is_wild(key, body) => (pat[1].span, "value", ty, mutbl),
+                    (_, value) if pat_is_wild(value, body) => (pat[0].span, "key", ty, MutImmutable),
                     _ => return,
                 },
                 _ => return,
@@ -1456,7 +1456,7 @@ fn check_for_mut_range_bound(cx: &LateContext, arg: &Expr, body: &Expr) {
         start: Some(start),
         end: Some(end),
         ..
-    }) = higher::range(arg)
+    }) = higher::range(cx, arg)
     {
         let mut_ids = vec![
             check_for_mutability(cx, start),
@@ -1705,8 +1705,8 @@ impl<'a, 'tcx> Visitor<'tcx> for VarVisitor<'a, 'tcx> {
                 for expr in args {
                     let ty = self.cx.tables.expr_ty_adjusted(expr);
                     self.prefer_mutable = false;
-                    if let ty::TyRef(_, mutbl) = ty.sty {
-                        if mutbl.mutbl == MutMutable {
+                    if let ty::TyRef(_, _, mutbl) = ty.sty {
+                        if mutbl == MutMutable {
                             self.prefer_mutable = true;
                         }
                     }
@@ -1717,8 +1717,8 @@ impl<'a, 'tcx> Visitor<'tcx> for VarVisitor<'a, 'tcx> {
                 let def_id = self.cx.tables.type_dependent_defs()[expr.hir_id].def_id();
                 for (ty, expr) in self.cx.tcx.fn_sig(def_id).inputs().skip_binder().iter().zip(args) {
                     self.prefer_mutable = false;
-                    if let ty::TyRef(_, mutbl) = ty.sty {
-                        if mutbl.mutbl == MutMutable {
+                    if let ty::TyRef(_, _, mutbl) = ty.sty {
+                        if mutbl == MutMutable {
                             self.prefer_mutable = true;
                         }
                     }
