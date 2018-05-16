@@ -50,7 +50,8 @@ create_config! {
     comment_width: usize, 80, false,
         "Maximum length of comments. No effect unless wrap_comments = true";
     normalize_comments: bool, false, true, "Convert /* */ comments to // comments where possible";
-    license_template_path: String, String::default(), false, "Beginning of file must match license template";
+    license_template_path: String, String::default(), false,
+        "Beginning of file must match license template";
     format_strings: bool, false, false, "Format string literals where necessary";
 
     // Single line expressions and items
@@ -106,6 +107,8 @@ create_config! {
         "Maximum number of blank lines which can be put between items.";
     blank_lines_lower_bound: usize, 0, false,
         "Minimum number of blank lines which must be put between items.";
+    remove_nested_parens: bool, false, false,
+        "Remove nested parens.";
 
     // Options that can change the source code beyond whitespace/blocks (somewhat linty things)
     merge_derives: bool, true, true, "Merge multiple `#[derive(...)]` into a single one";
@@ -140,8 +143,7 @@ create_config! {
         "Skip formatting the specified files and directories.";
 
     // Not user-facing
-    verbose: bool, false, false, "Use verbose output";
-    verbose_diff: bool, false, false, "Emit verbose diffs";
+    verbose: Verbosity, Verbosity::Normal, false, "How much to information to emit to the user";
     file_lines: FileLines, FileLines::all(), false,
         "Lines to format; this is not supported in rustfmt.toml, and can only be specified \
          via the --file-lines option";
@@ -227,7 +229,7 @@ fn config_path(options: &CliOptions) -> Result<Option<PathBuf>, Error> {
 
 #[cfg(test)]
 mod test {
-    use super::Config;
+    use super::*;
     use std::str;
 
     #[allow(dead_code)]
@@ -237,16 +239,22 @@ mod test {
         create_config! {
             // Options that are used by the generated functions
             max_width: usize, 100, true, "Maximum width of each line";
-            use_small_heuristics: bool, true, false, "Whether to use different formatting for items and \
-                expressions if they satisfy a heuristic notion of 'small'.";
-            license_template_path: String, String::default(), false, "Beginning of file must match license template";
-            required_version: String, env!("CARGO_PKG_VERSION").to_owned(), false, "Require a specific version of rustfmt.";
-            ignore: IgnoreList, IgnoreList::default(), false, "Skip formatting the specified files and directories.";
-            verbose: bool, false, false, "Use verbose output";
+            use_small_heuristics: bool, true, false,
+                "Whether to use different formatting for items and \
+                 expressions if they satisfy a heuristic notion of 'small'.";
+            license_template_path: String, String::default(), false,
+                "Beginning of file must match license template";
+            required_version: String, env!("CARGO_PKG_VERSION").to_owned(), false,
+                "Require a specific version of rustfmt.";
+            ignore: IgnoreList, IgnoreList::default(), false,
+                "Skip formatting the specified files and directories.";
+            verbose: Verbosity, Verbosity::Normal, false,
+                "How much to information to emit to the user";
             file_lines: FileLines, FileLines::all(), false,
                 "Lines to format; this is not supported in rustfmt.toml, and can only be specified \
                     via the --file-lines option";
-            width_heuristics: WidthHeuristics, WidthHeuristics::scaled(100), false, "'small' heuristic values";
+            width_heuristics: WidthHeuristics, WidthHeuristics::scaled(100), false,
+                "'small' heuristic values";
 
             // Options that are used by the tests
             stable_option: bool, false, true, "A stable option";
@@ -257,10 +265,10 @@ mod test {
     #[test]
     fn test_config_set() {
         let mut config = Config::default();
-        config.set().verbose(false);
-        assert_eq!(config.verbose(), false);
-        config.set().verbose(true);
-        assert_eq!(config.verbose(), true);
+        config.set().verbose(Verbosity::Quiet);
+        assert_eq!(config.verbose(), Verbosity::Quiet);
+        config.set().verbose(Verbosity::Normal);
+        assert_eq!(config.verbose(), Verbosity::Normal);
     }
 
     #[test]

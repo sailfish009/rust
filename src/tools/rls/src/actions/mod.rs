@@ -57,6 +57,7 @@ pub mod post_build;
 pub mod requests;
 pub mod notifications;
 pub mod progress;
+pub mod diagnostics;
 
 /// Persistent context shared across all requests and notifications.
 pub enum ActionContext {
@@ -76,14 +77,14 @@ impl ActionContext {
         ActionContext::Uninit(UninitActionContext::new(analysis, vfs, config))
     }
 
-    /// Initialize this context. Panics if it has already been initialized.
+    /// Initialize this context, returns `Err(())` if it has already been initialized.
     pub fn init<O: Output>(
         &mut self,
         current_project: PathBuf,
         init_options: &InitializationOptions,
         client_capabilities: lsp_data::ClientCapabilities,
         out: &O,
-    ) {
+    ) -> Result<(), ()> {
         let ctx = match *self {
             ActionContext::Uninit(ref uninit) => {
                 let ctx = InitActionContext::new(
@@ -96,16 +97,17 @@ impl ActionContext {
                 ctx.init(init_options, out);
                 ctx
             }
-            ActionContext::Init(_) => panic!("ActionContext already initialized"),
+            ActionContext::Init(_) => return Err(()),
         };
         *self = ActionContext::Init(ctx);
+        Ok(())
     }
 
-    /// Returns an initialiased wrapped context, or panics if not initialised.
-    pub fn inited(&self) -> InitActionContext {
+    /// Returns an initialiased wrapped context, or `Err(())` if not initialised.
+    pub fn inited(&self) -> Result<InitActionContext, ()> {
         match *self {
-            ActionContext::Uninit(_) => panic!("ActionContext not initialized"),
-            ActionContext::Init(ref ctx) => ctx.clone(),
+            ActionContext::Uninit(_) => Err(()),
+            ActionContext::Init(ref ctx) => Ok(ctx.clone()),
         }
     }
 }
@@ -226,6 +228,7 @@ impl InitActionContext {
                 previous_build_results: self.previous_build_results.clone(),
                 project_path: project_path.to_owned(),
                 show_warnings: config.show_warnings,
+                related_information_support: self.client_capabilities.related_information_support,
                 shown_cargo_error: self.shown_cargo_error.clone(),
                 active_build_count: self.active_build_count.clone(),
                 use_black_list: config.use_crate_blacklist,

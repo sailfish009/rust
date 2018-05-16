@@ -50,7 +50,8 @@ pub fn rewrite_closure(
     if let ast::ExprKind::Block(ref block) = body.node {
         // The body of the closure is an empty block.
         if block.stmts.is_empty() && !block_contains_comment(block, context.codemap) {
-            return body.rewrite(context, shape)
+            return body
+                .rewrite(context, shape)
                 .map(|s| format!("{} {}", prefix, s));
         }
 
@@ -109,8 +110,10 @@ fn get_inner_expr<'a>(
 
 // Figure out if a block is necessary.
 fn needs_block(block: &ast::Block, prefix: &str, context: &RewriteContext) -> bool {
-    is_unsafe_block(block) || block.stmts.len() > 1
-        || block_contains_comment(block, context.codemap) || prefix.contains('\n')
+    is_unsafe_block(block)
+        || block.stmts.len() > 1
+        || block_contains_comment(block, context.codemap)
+        || prefix.contains('\n')
 }
 
 // Rewrite closure with a single expression wrapping its body with block.
@@ -237,10 +240,7 @@ fn rewrite_closure_fn_decl(
     );
     let item_vec = arg_items.collect::<Vec<_>>();
     // 1 = space between arguments and return type.
-    let horizontal_budget = nested_shape
-        .width
-        .checked_sub(ret_str.len() + 1)
-        .unwrap_or(0);
+    let horizontal_budget = nested_shape.width.saturating_sub(ret_str.len() + 1);
     let tactic = definitive_tactic(
         &item_vec,
         ListTactic::HorizontalVertical,

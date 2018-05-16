@@ -10,7 +10,7 @@
 
 //! Traits and structs for message handling
 
-
+use actions::InitActionContext;
 use jsonrpc_core::{self as jsonrpc, Id};
 use serde;
 use serde::ser::{Serialize, Serializer, SerializeStruct};
@@ -49,24 +49,39 @@ impl<R: ::serde::Serialize + fmt::Debug> Response for R {
     }
 }
 
+/// Wrapper for a response error
+#[derive(Debug)]
+pub enum ResponseError {
+    /// Error with no special response to the client
+    Empty,
+    /// Error with a response to the client
+    Message(jsonrpc::ErrorCode, String),
+}
+
+impl From<()> for ResponseError {
+    fn from(_: ()) -> Self {
+        ResponseError::Empty
+    }
+}
+
 /// An action taken in response to some notification from the client.
 /// Blocks stdin whilst being handled.
 pub trait BlockingNotificationAction: LSPNotification {
     /// Handle this notification.
-    fn handle<O: Output>(params: Self::Params, ctx: &mut ActionContext, out: O) -> Result<(), ()>;
+    fn handle<O: Output>(Self::Params, &mut InitActionContext, O) -> Result<(), ()>;
 }
 
 /// A request that blocks stdin whilst being handled
 pub trait BlockingRequestAction: LSPRequest {
     type Response: Response + fmt::Debug;
 
-    /// Handle request and send its response back along the given output.
+    /// Handle request and return its response. Output is also provided for additional messaging.
     fn handle<O: Output>(
         id: usize,
         params: Self::Params,
         ctx: &mut ActionContext,
         out: O,
-    ) -> Result<Self::Response, ()>;
+    ) -> Result<Self::Response, ResponseError>;
 }
 
 /// A request that gets JSON serialized in the language server protocol.
@@ -166,15 +181,13 @@ impl<A: BlockingRequestAction> Request<A> {
         self,
         ctx: &mut ActionContext,
         out: &O,
-    ) -> Result<A::Response, ()> {
-        let result = A::handle(self.id, self.params, ctx, out.clone())?;
-        result.send(self.id, out);
-        Ok(result)
+    ) -> Result<A::Response, ResponseError> {
+        A::handle(self.id, self.params, ctx, out.clone())
     }
 }
 
 impl<A: BlockingNotificationAction> Notification<A> {
-    pub fn dispatch<O: Output>(self, ctx: &mut ActionContext, out: O) -> Result<(), ()> {
+    pub fn dispatch<O: Output>(self, ctx: &mut InitActionContext, out: O) -> Result<(), ()> {
         A::handle(self.params, ctx, out)?;
         Ok(())
     }
@@ -378,8 +391,8 @@ mod test {
         let deser: serde_json::Value = serde_json::from_str(&raw).unwrap();
 
         assert!(match deser.get("params") {
-            Some(&serde_json::Value::Array(ref arr)) if arr.len() == 0 => true,
-            Some(&serde_json::Value::Object(ref map)) if map.len() == 0 => true,
+            Some(&serde_json::Value::Array(ref arr)) if arr.is_empty() => true,
+            Some(&serde_json::Value::Object(ref map)) if map.is_empty() => true,
             None => true,
             _ => false,
         });

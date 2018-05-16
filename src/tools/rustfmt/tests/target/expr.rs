@@ -1,5 +1,6 @@
 // rustfmt-normalize_comments: true
 // rustfmt-wrap_comments: true
+// rustfmt-remove_nested_parens: true
 // Test expressions
 
 fn foo() -> bool {
@@ -20,8 +21,10 @@ fn foo() -> bool {
         10000 * 30000000000 + 40000 / 1002200000000 - 50000 * sqrt(-1),
         trivial_value,
     );
-    (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + a
-        + aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + aaaaa);
+    (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        + a
+        + aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        + aaaaa);
 
     {
         for _ in 0..10 {}
@@ -401,7 +404,8 @@ impl Foo {
             let x = match () {
                 () => {
                     let i;
-                    i == self.install_config
+                    i == self
+                        .install_config
                         .storage
                         .experimental_compressed_block_size as usize
                 }
@@ -414,4 +418,12 @@ fn dots() {
     .. .. ..; // (.. (.. (..)))
     ..= ..= ..;
     (..).. ..; // ((..) .. (..))
+}
+
+// #2676
+// A function call with a large single argument.
+fn foo() {
+    let my_var = Mutex::new(
+        RpcClientType::connect(server_iddd).chain_err(|| "Unable to create RPC client")?
+    );
 }

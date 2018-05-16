@@ -96,17 +96,20 @@ impl ListItem {
 
     pub fn is_different_group(&self) -> bool {
         self.inner_as_ref().contains('\n') || self.pre_comment.is_some()
-            || self.post_comment
+            || self
+                .post_comment
                 .as_ref()
                 .map_or(false, |s| s.contains('\n'))
     }
 
     pub fn is_multiline(&self) -> bool {
         self.inner_as_ref().contains('\n')
-            || self.pre_comment
+            || self
+                .pre_comment
                 .as_ref()
                 .map_or(false, |s| s.contains('\n'))
-            || self.post_comment
+            || self
+                .post_comment
                 .as_ref()
                 .map_or(false, |s| s.contains('\n'))
     }
@@ -115,7 +118,8 @@ impl ListItem {
         self.pre_comment
             .as_ref()
             .map_or(false, |comment| comment.trim_left().starts_with("//"))
-            || self.post_comment
+            || self
+                .post_comment
                 .as_ref()
                 .map_or(false, |comment| comment.trim_left().starts_with("//"))
     }
@@ -189,10 +193,11 @@ where
     };
 
     let (sep_count, total_width) = calculate_width(items.clone());
-    let total_sep_len = sep.len() * sep_count.checked_sub(1).unwrap_or(0);
+    let total_sep_len = sep.len() * sep_count.saturating_sub(1);
     let real_total = total_width + total_sep_len;
 
-    if real_total <= limit && !pre_line_comments
+    if real_total <= limit
+        && !pre_line_comments
         && !items.into_iter().any(|item| item.as_ref().is_multiline())
     {
         DefinitiveListTactic::Horizontal
@@ -404,8 +409,10 @@ where
             if !starts_with_newline(comment) {
                 let mut comment_alignment =
                     post_comment_alignment(item_max_width, inner_item.len());
-                if first_line_width(&formatted_comment) + last_line_width(&result)
-                    + comment_alignment + 1 > formatting.config.max_width()
+                if first_line_width(&formatted_comment)
+                    + last_line_width(&result)
+                    + comment_alignment
+                    + 1 > formatting.config.max_width()
                 {
                     item_max_width = None;
                     formatted_comment = rewrite_post_comment(&mut item_max_width)?;
@@ -431,7 +438,9 @@ where
             item_max_width = None;
         }
 
-        if formatting.preserve_newline && !last && tactic == DefinitiveListTactic::Vertical
+        if formatting.preserve_newline
+            && !last
+            && tactic == DefinitiveListTactic::Vertical
             && item.new_lines
         {
             item_max_width = None;
@@ -458,7 +467,8 @@ where
         let item = item.as_ref();
         let inner_item_width = item.inner_as_ref().len();
         if !first
-            && (item.is_different_group() || item.post_comment.is_none()
+            && (item.is_different_group()
+                || item.post_comment.is_none()
                 || inner_item_width + overhead > max_budget)
         {
             return max_width;
@@ -475,9 +485,7 @@ where
 }
 
 fn post_comment_alignment(item_max_width: Option<usize>, inner_item_len: usize) -> usize {
-    item_max_width
-        .and_then(|max_line_width| max_line_width.checked_sub(inner_item_len))
-        .unwrap_or(0)
+    item_max_width.unwrap_or(0).saturating_sub(inner_item_len)
 }
 
 pub struct ListItems<'a, I, F1, F2, F3>
@@ -511,7 +519,8 @@ where
         self.inner.next().map(|item| {
             let mut new_lines = false;
             // Pre-comment
-            let pre_snippet = self.snippet_provider
+            let pre_snippet = self
+                .snippet_provider
                 .span_to_snippet(mk_sp(self.prev_span_end, (self.get_lo)(&item)))
                 .unwrap();
             let trimmed_pre_snippet = pre_snippet.trim();
@@ -549,7 +558,8 @@ where
                 Some(next_item) => (self.get_lo)(next_item),
                 None => self.next_span_start,
             };
-            let post_snippet = self.snippet_provider
+            let post_snippet = self
+                .snippet_provider
                 .span_to_snippet(mk_sp((self.get_hi)(&item), next_start))
                 .unwrap();
 

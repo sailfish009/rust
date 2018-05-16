@@ -108,7 +108,7 @@ pub fn rewrite_chain(expr: &ast::Expr, context: &RewriteContext, shape: Shape) -
         .rewrite(context, parent_shape)
         .map(|parent_rw| parent_rw + &"?".repeat(prefix_try_num))?;
     let parent_rewrite_contains_newline = parent_rewrite.contains('\n');
-    let is_small_parent = parent_rewrite.len() <= context.config.tab_spaces();
+    let is_small_parent = shape.offset + parent_rewrite.len() <= context.config.tab_spaces();
 
     // Decide how to layout the rest of the chain. `extend` is true if we can
     // put the first non-parent item on the same line as the parent.
@@ -156,7 +156,8 @@ pub fn rewrite_chain(expr: &ast::Expr, context: &RewriteContext, shape: Shape) -
     let last_subexpr = &subexpr_list[suffix_try_num];
     let subexpr_list = &subexpr_list[suffix_try_num..subexpr_num - prefix_try_num];
     let iter = subexpr_list.iter().skip(1).rev().zip(child_shape_iter);
-    let mut rewrites = iter.map(|(e, shape)| rewrite_chain_subexpr(e, total_span, context, shape))
+    let mut rewrites = iter
+        .map(|(e, shape)| rewrite_chain_subexpr(e, total_span, context, shape))
         .collect::<Option<Vec<_>>>()?;
 
     // Total of all items excluding the last.
@@ -265,7 +266,8 @@ pub fn rewrite_chain(expr: &ast::Expr, context: &RewriteContext, shape: Shape) -
         nested_shape.indent.to_string_with_newline(context.config)
     };
 
-    let first_connector = if is_small_parent || fits_single_line
+    let first_connector = if is_small_parent
+        || fits_single_line
         || last_line_extendable(&parent_rewrite)
         || context.config.indent_style() == IndentStyle::Visual
     {
@@ -275,7 +277,8 @@ pub fn rewrite_chain(expr: &ast::Expr, context: &RewriteContext, shape: Shape) -
     };
 
     let result = if is_small_parent && rewrites.len() > 1 {
-        let second_connector = if fits_single_line || rewrites[1] == "?"
+        let second_connector = if fits_single_line
+            || rewrites[1] == "?"
             || last_line_extendable(&rewrites[0])
             || context.config.indent_style() == IndentStyle::Visual
         {

@@ -453,11 +453,11 @@ fn visit_arm<'a, 'tcx>(ir: &mut IrMaps<'a, 'tcx>, arm: &'tcx hir::Arm) {
             }
         }
 
-        pat.each_binding(|bm, p_id, sp, path1| {
+        pat.each_binding(|bm, p_id, _sp, path1| {
             debug!("adding local variable {} from match with bm {:?}",
                    p_id, bm);
             let name = path1.node;
-            ir.add_live_node_for_node(p_id, VarDefNode(sp));
+            ir.add_live_node_for_node(p_id, VarDefNode(path1.span));
             ir.add_variable(Local(LocalInfo {
                 id: p_id,
                 name: name,
@@ -571,9 +571,6 @@ struct Liveness<'a, 'tcx: 'a> {
     // it probably doesn't now)
     break_ln: NodeMap<LiveNode>,
     cont_ln: NodeMap<LiveNode>,
-
-    // mappings from node ID to LiveNode for "breakable" blocks-- currently only `catch {...}`
-    breakable_block_ln: NodeMap<LiveNode>,
 }
 
 impl<'a, 'tcx> Liveness<'a, 'tcx> {
@@ -601,7 +598,6 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
             users: vec![invalid_users(); num_live_nodes * num_vars],
             break_ln: NodeMap(),
             cont_ln: NodeMap(),
-            breakable_block_ln: NodeMap(),
         }
     }
 
@@ -628,10 +624,10 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
     fn pat_bindings<F>(&mut self, pat: &hir::Pat, mut f: F) where
         F: FnMut(&mut Liveness<'a, 'tcx>, LiveNode, Variable, Span, NodeId),
     {
-        pat.each_binding(|_bm, p_id, sp, _n| {
+        pat.each_binding(|_bm, p_id, sp, n| {
             let ln = self.live_node(p_id, sp);
-            let var = self.variable(p_id, sp);
-            f(self, ln, var, sp, p_id);
+            let var = self.variable(p_id, n.span);
+            f(self, ln, var, n.span, p_id);
         })
     }
 
@@ -870,7 +866,7 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
     fn propagate_through_block(&mut self, blk: &hir::Block, succ: LiveNode)
                                -> LiveNode {
         if blk.targeted_by_break {
-            self.breakable_block_ln.insert(blk.id, succ);
+            self.break_ln.insert(blk.id, succ);
         }
         let succ = self.propagate_through_opt_expr(blk.expr.as_ref().map(|e| &**e), succ);
         blk.stmts.iter().rev().fold(succ, |succ, stmt| {
@@ -1055,12 +1051,8 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
           hir::ExprBreak(label, ref opt_expr) => {
               // Find which label this break jumps to
               let target = match label.target_id {
-                    hir::ScopeTarget::Block(node_id) =>
-                        self.breakable_block_ln.get(&node_id),
-                    hir::ScopeTarget::Loop(hir::LoopIdResult::Ok(node_id)) =>
-                        self.break_ln.get(&node_id),
-                    hir::ScopeTarget::Loop(hir::LoopIdResult::Err(err)) =>
-                        span_bug!(expr.span, "loop scope error: {}", err),
+                    Ok(node_id) => self.break_ln.get(&node_id),
+                    Err(err) => span_bug!(expr.span, "loop scope error: {}", err),
               }.map(|x| *x);
 
               // Now that we know the label we're going to,
@@ -1075,10 +1067,8 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
           hir::ExprAgain(label) => {
               // Find which label this expr continues to
               let sc = match label.target_id {
-                    hir::ScopeTarget::Block(_) => bug!("can't `continue` to a non-loop block"),
-                    hir::ScopeTarget::Loop(hir::LoopIdResult::Ok(node_id)) => node_id,
-                    hir::ScopeTarget::Loop(hir::LoopIdResult::Err(err)) =>
-                        span_bug!(expr.span, "loop scope error: {}", err),
+                    Ok(node_id) => node_id,
+                    Err(err) => span_bug!(expr.span, "loop scope error: {}", err),
               };
 
               // Now that we know the label we're going to,
@@ -1398,7 +1388,8 @@ fn check_local<'a, 'tcx>(this: &mut Liveness<'a, 'tcx>, local: &'tcx hir::Local)
         },
         None => {
             this.pat_bindings(&local.pat, |this, ln, var, sp, id| {
-                this.warn_about_unused(sp, id, ln, var);
+                let span = local.pat.simple_span().unwrap_or(sp);
+                this.warn_about_unused(span, id, ln, var);
             })
         }
     }
@@ -1497,7 +1488,8 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
 
     fn warn_about_unused_args(&self, body: &hir::Body, entry_ln: LiveNode) {
         for arg in &body.arguments {
-            arg.pat.each_binding(|_bm, p_id, sp, path1| {
+            arg.pat.each_binding(|_bm, p_id, _, path1| {
+                let sp = path1.span;
                 let var = self.variable(p_id, sp);
                 // Ignore unused self.
                 let name = path1.node;
@@ -1541,6 +1533,7 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
 
                 let suggest_underscore_msg = format!("consider using `_{}` instead",
                                                      name);
+
                 if is_assigned {
                     self.ir.tcx
                         .lint_node_note(lint::builtin::UNUSED_VARIABLES, id, sp,

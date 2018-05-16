@@ -15,7 +15,7 @@ use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
 
 use checkstyle::output_checkstyle_file;
-use config::{Config, NewlineStyle, WriteMode};
+use config::{Config, NewlineStyle, Verbosity, WriteMode};
 use rustfmt_diff::{make_diff, output_modified, print_diff, Mismatch};
 use syntax::codemap::FileName;
 
@@ -150,25 +150,11 @@ where
                 write_system_newlines(file, text, config)?;
             }
         }
-        WriteMode::Plain => {
-            write_system_newlines(out, text, config)?;
-        }
         WriteMode::Display | WriteMode::Coverage => {
-            println!("{}:\n", filename);
-            write_system_newlines(out, text, config)?;
-        }
-        WriteMode::Diff => {
-            let filename = filename_to_path();
-            if let Ok((ori, fmt)) = source_and_formatted_text(text, filename, config) {
-                let mismatch = make_diff(&ori, &fmt, 3);
-                let has_diff = !mismatch.is_empty();
-                print_diff(
-                    mismatch,
-                    |line_num| format!("Diff in {} at line {}:", filename.display(), line_num),
-                    config,
-                );
-                return Ok(has_diff);
+            if config.verbose() != Verbosity::Quiet {
+                println!("{}:\n", filename);
             }
+            write_system_newlines(out, text, config)?;
         }
         WriteMode::Modified => {
             let filename = filename_to_path();

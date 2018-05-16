@@ -230,10 +230,12 @@ fn rewrite_segment(
     if let Some(ref params) = segment.parameters {
         match **params {
             ast::PathParameters::AngleBracketed(ref data)
-                if !data.lifetimes.is_empty() || !data.types.is_empty()
+                if !data.lifetimes.is_empty()
+                    || !data.types.is_empty()
                     || !data.bindings.is_empty() =>
             {
-                let param_list = data.lifetimes
+                let param_list = data
+                    .lifetimes
                     .iter()
                     .map(SegmentParam::LifeTime)
                     .chain(data.types.iter().map(|x| SegmentParam::Type(&*x)))
@@ -303,7 +305,7 @@ where
         T: Deref,
         <T as Deref>::Target: Rewrite + Spanned,
     {
-        Regular(Box<T>),
+        Regular(T),
         Variadic(BytePos),
     }
 
@@ -330,11 +332,7 @@ where
     let list_lo = context.snippet_provider.span_after(span, "(");
     let items = itemize_list(
         context.snippet_provider,
-        // FIXME Would be nice to avoid this allocation,
-        // but I couldn't get the types to work out.
-        inputs
-            .map(|i| ArgumentKind::Regular(Box::new(i)))
-            .chain(variadic_arg),
+        inputs.map(ArgumentKind::Regular).chain(variadic_arg),
         ")",
         ",",
         |arg| match *arg {
@@ -573,7 +571,8 @@ impl Rewrite for ast::PolyTraitRef {
         {
             // 6 is "for<> ".len()
             let extra_offset = lifetime_str.len() + 6;
-            let path_str = self.trait_ref
+            let path_str = self
+                .trait_ref
                 .rewrite(context, shape.offset_left(extra_offset)?)?;
 
             Some(
@@ -716,7 +715,8 @@ impl Rewrite for ast::Ty {
                 rewrite_macro(mac, None, context, shape, MacroPosition::Expression)
             }
             ast::TyKind::ImplicitSelf => Some(String::from("")),
-            ast::TyKind::ImplTrait(ref it) => it.rewrite(context, shape)
+            ast::TyKind::ImplTrait(ref it) => it
+                .rewrite(context, shape)
                 .map(|it_str| format!("impl {}", it_str)),
             ast::TyKind::Err | ast::TyKind::Typeof(..) => unreachable!(),
         }

@@ -86,16 +86,18 @@ pub fn format_expr(
             rewrite_call(context, &callee_str, args, inner_span, shape)
         }
         ast::ExprKind::Paren(ref subexpr) => rewrite_paren(context, subexpr, shape, expr.span),
-        ast::ExprKind::Binary(ref op, ref lhs, ref rhs) => {
+        ast::ExprKind::Binary(op, ref lhs, ref rhs) => {
             // FIXME: format comments between operands and operator
-            rewrite_pair(
-                &**lhs,
-                &**rhs,
-                PairParts::new("", &format!(" {} ", context.snippet(op.span)), ""),
-                context,
-                shape,
-                context.config.binop_separator(),
-            )
+            rewrite_simple_binaries(context, expr, shape, op).or_else(|| {
+                rewrite_pair(
+                    &**lhs,
+                    &**rhs,
+                    PairParts::new("", &format!(" {} ", context.snippet(op.span)), ""),
+                    context,
+                    shape,
+                    context.config.binop_separator(),
+                )
+            })
         }
         ast::ExprKind::Unary(ref op, ref subexpr) => rewrite_unary_op(context, op, subexpr, shape),
         ast::ExprKind::Struct(ref path, ref fields, ref base) => rewrite_struct_lit(
@@ -324,7 +326,7 @@ pub fn format_expr(
                 rw
             } else {
                 // 9 = `do catch `
-                let budget = shape.width.checked_sub(9).unwrap_or(0);
+                let budget = shape.width.saturating_sub(9);
                 Some(format!(
                     "{}{}",
                     "do catch ",
@@ -350,6 +352,80 @@ pub fn format_expr(
             );
             combine_strs_with_missing_comments(context, &attrs_str, &expr_str, span, shape, false)
         })
+}
+
+/// Collect operands that appears in the given binary operator in the opposite order.
+/// e.g. `collect_binary_items(e, ||)` for `a && b || c || d` returns `[d, c, a && b]`.
+fn collect_binary_items<'a>(mut expr: &'a ast::Expr, binop: ast::BinOp) -> Vec<&'a ast::Expr> {
+    let mut result = vec![];
+    let mut prev_lhs = None;
+    loop {
+        match expr.node {
+            ast::ExprKind::Binary(inner_binop, ref lhs, ref rhs)
+                if inner_binop.node == binop.node =>
+            {
+                result.push(&**rhs);
+                expr = lhs;
+                prev_lhs = Some(lhs);
+            }
+            _ => {
+                if let Some(lhs) = prev_lhs {
+                    result.push(lhs);
+                }
+                break;
+            }
+        }
+    }
+    result
+}
+
+/// Rewrites a binary expression whose operands fits within a single line.
+fn rewrite_simple_binaries(
+    context: &RewriteContext,
+    expr: &ast::Expr,
+    shape: Shape,
+    op: ast::BinOp,
+) -> Option<String> {
+    let op_str = context.snippet(op.span);
+
+    // 2 = spaces around a binary operator.
+    let sep_overhead = op_str.len() + 2;
+    let nested_overhead = sep_overhead - 1;
+
+    let nested_shape = (match context.config.indent_style() {
+        IndentStyle::Visual => shape.visual_indent(0),
+        IndentStyle::Block => shape.block_indent(context.config.tab_spaces()),
+    }).with_max_width(context.config);
+    let nested_shape = match context.config.binop_separator() {
+        SeparatorPlace::Back => nested_shape.sub_width(nested_overhead)?,
+        SeparatorPlace::Front => nested_shape.offset_left(nested_overhead)?,
+    };
+
+    let opt_rewrites: Option<Vec<_>> = collect_binary_items(expr, op)
+        .iter()
+        .rev()
+        .map(|e| e.rewrite(context, nested_shape))
+        .collect();
+    if let Some(rewrites) = opt_rewrites {
+        if rewrites.iter().all(|e| ::utils::is_single_line(e)) {
+            let total_width = rewrites.iter().map(|s| s.len()).sum::<usize>()
+                + sep_overhead * (rewrites.len() - 1);
+
+            let sep_str = if total_width <= shape.width {
+                format!(" {} ", op_str)
+            } else {
+                let indent_str = nested_shape.indent.to_string_with_newline(context.config);
+                match context.config.binop_separator() {
+                    SeparatorPlace::Back => format!(" {}{}", op_str.trim_right(), indent_str),
+                    SeparatorPlace::Front => format!("{}{} ", indent_str, op_str.trim_left()),
+                }
+            };
+
+            return wrap_str(rewrites.join(&sep_str), context.config.max_width(), shape);
+        }
+    }
+
+    None
 }
 
 #[derive(new, Clone, Copy)]
@@ -379,7 +455,8 @@ where
         width: context.budget(lhs_overhead),
         ..shape
     };
-    let lhs_result = lhs.rewrite(context, lhs_shape)
+    let lhs_result = lhs
+        .rewrite(context, lhs_shape)
         .map(|lhs_str| format!("{}{}", pp.prefix, lhs_str))?;
 
     // Try to put both lhs and rhs on the same line.
@@ -398,8 +475,10 @@ where
                 .map(|first_line| first_line.ends_with('{'))
                 .unwrap_or(false);
         if !rhs_result.contains('\n') || allow_same_line {
-            let one_line_width = last_line_width(&lhs_result) + pp.infix.len()
-                + first_line_width(rhs_result) + pp.suffix.len();
+            let one_line_width = last_line_width(&lhs_result)
+                + pp.infix.len()
+                + first_line_width(rhs_result)
+                + pp.suffix.len();
             if one_line_width <= shape.width {
                 return Some(format!(
                     "{}{}{}{}",
@@ -482,7 +561,9 @@ fn rewrite_empty_block(
     let user_str = user_str.trim();
     if user_str.starts_with('{') && user_str.ends_with('}') {
         let comment_str = user_str[1..user_str.len() - 1].trim();
-        if block.stmts.is_empty() && !comment_str.contains('\n') && !comment_str.starts_with("//")
+        if block.stmts.is_empty()
+            && !comment_str.contains('\n')
+            && !comment_str.starts_with("//")
             && comment_str.len() + 4 <= shape.width
         {
             return Some(format!("{}{{ {} }}", prefix, comment_str));
@@ -921,8 +1002,7 @@ impl<'a> ControlFlow<'a> {
         let one_line_budget = context
             .config
             .max_width()
-            .checked_sub(constr_shape.used_width() + offset + brace_overhead)
-            .unwrap_or(0);
+            .saturating_sub(constr_shape.used_width() + offset + brace_overhead);
         let force_newline_brace = (pat_expr_string.contains('\n')
             || pat_expr_string.len() > one_line_budget)
             && !last_line_extendable(&pat_expr_string);
@@ -956,7 +1036,8 @@ impl<'a> ControlFlow<'a> {
 
         // `for event in event`
         // Do not include label in the span.
-        let lo = self.label
+        let lo = self
+            .label
             .map_or(self.span.lo(), |label| label.ident.span.hi());
         let between_kwd_cond = mk_sp(
             context
@@ -1027,7 +1108,7 @@ impl<'a> Rewrite for ControlFlow<'a> {
             return Some(cond_str);
         }
 
-        let block_width = shape.width.checked_sub(used_width).unwrap_or(0);
+        let block_width = shape.width.saturating_sub(used_width);
         // This is used only for the empty block case: `{}`. So, we use 1 if we know
         // we should avoid the single line case.
         let block_width = if self.else_block.is_some() || self.nested_if {
@@ -1165,8 +1246,10 @@ pub fn is_simple_block(
     attrs: Option<&[ast::Attribute]>,
     codemap: &CodeMap,
 ) -> bool {
-    (block.stmts.len() == 1 && stmt_is_expr(&block.stmts[0])
-        && !block_contains_comment(block, codemap) && attrs.map_or(true, |a| a.is_empty()))
+    (block.stmts.len() == 1
+        && stmt_is_expr(&block.stmts[0])
+        && !block_contains_comment(block, codemap)
+        && attrs.map_or(true, |a| a.is_empty()))
 }
 
 /// Checks whether a block contains at most one statement or expression, and no
@@ -1176,7 +1259,8 @@ pub fn is_simple_block_stmt(
     attrs: Option<&[ast::Attribute]>,
     codemap: &CodeMap,
 ) -> bool {
-    block.stmts.len() <= 1 && !block_contains_comment(block, codemap)
+    block.stmts.len() <= 1
+        && !block_contains_comment(block, codemap)
         && attrs.map_or(true, |a| a.is_empty())
 }
 
@@ -1187,7 +1271,8 @@ pub fn is_empty_block(
     attrs: Option<&[ast::Attribute]>,
     codemap: &CodeMap,
 ) -> bool {
-    block.stmts.is_empty() && !block_contains_comment(block, codemap)
+    block.stmts.is_empty()
+        && !block_contains_comment(block, codemap)
         && attrs.map_or(true, |a| inner_attributes(a).is_empty())
 }
 
@@ -1211,11 +1296,13 @@ pub fn rewrite_multiple_patterns(
     pats: &[&ast::Pat],
     shape: Shape,
 ) -> Option<String> {
-    let pat_strs = pats.iter()
+    let pat_strs = pats
+        .iter()
         .map(|p| p.rewrite(context, shape))
         .collect::<Option<Vec<_>>>()?;
 
-    let use_mixed_layout = pats.iter()
+    let use_mixed_layout = pats
+        .iter()
         .zip(pat_strs.iter())
         .all(|(pat, pat_str)| is_short_pattern(pat, pat_str));
     let items: Vec<_> = pat_strs.into_iter().map(ListItem::from_str).collect();
@@ -1474,6 +1561,7 @@ fn rewrite_paren(
     // Extract comments within parens.
     let mut pre_comment;
     let mut post_comment;
+    let remove_nested_parens = context.config.remove_nested_parens();
     loop {
         // 1 = "(" or ")"
         let pre_span = mk_sp(span.lo() + BytePos(1), subexpr.span.lo());
@@ -1483,7 +1571,7 @@ fn rewrite_paren(
 
         // Remove nested parens if there are no comments.
         if let ast::ExprKind::Paren(ref subsubexpr) = subexpr.node {
-            if pre_comment.is_empty() && post_comment.is_empty() {
+            if remove_nested_parens && pre_comment.is_empty() && post_comment.is_empty() {
                 span = subexpr.span;
                 subexpr = subsubexpr;
                 continue;
@@ -1701,7 +1789,8 @@ pub fn wrap_struct_field(
     one_line_width: usize,
 ) -> String {
     if context.config.indent_style() == IndentStyle::Block
-        && (fields_str.contains('\n') || !context.config.struct_lit_single_line()
+        && (fields_str.contains('\n')
+            || !context.config.struct_lit_single_line()
             || fields_str.len() > one_line_width)
     {
         format!(
@@ -1738,7 +1827,7 @@ pub fn rewrite_field(
         Some(attrs_str + &name)
     } else {
         let mut separator = String::from(struct_lit_field_separator(context.config));
-        for _ in 0..prefix_max_width.checked_sub(name.len()).unwrap_or(0) {
+        for _ in 0..prefix_max_width.saturating_sub(name.len()) {
             separator.push(' ');
         }
         let overhead = name.len() + separator.len();
@@ -1963,13 +2052,11 @@ pub fn rewrite_assign_rhs_with<S: Into<String>, R: Rewrite>(
     rhs_tactics: RhsTactics,
 ) -> Option<String> {
     let lhs = lhs.into();
-    let last_line_width = last_line_width(&lhs)
-        .checked_sub(if lhs.contains('\n') {
-            shape.indent.width()
-        } else {
-            0
-        })
-        .unwrap_or(0);
+    let last_line_width = last_line_width(&lhs).saturating_sub(if lhs.contains('\n') {
+        shape.indent.width()
+    } else {
+        0
+    });
     // 1 = space between operator and rhs.
     let orig_shape = shape.offset_left(last_line_width + 1).unwrap_or(Shape {
         width: 0,
@@ -2027,7 +2114,8 @@ fn choose_rhs<R: Rewrite>(
 }
 
 pub fn prefer_next_line(orig_rhs: &str, next_line_rhs: &str, rhs_tactics: RhsTactics) -> bool {
-    rhs_tactics == RhsTactics::ForceNextLine || !next_line_rhs.contains('\n')
+    rhs_tactics == RhsTactics::ForceNextLine
+        || !next_line_rhs.contains('\n')
         || count_newlines(orig_rhs) > count_newlines(next_line_rhs) + 1
 }
 

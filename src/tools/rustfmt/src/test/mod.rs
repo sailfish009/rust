@@ -11,6 +11,7 @@
 extern crate assert_cli;
 
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read};
 use std::iter::{Enumerate, Peekable};
@@ -111,7 +112,7 @@ fn write_message(msg: &str) {
 fn system_tests() {
     // Get all files in the tests/source directory.
     let files = get_test_files(Path::new("tests/source"), true);
-    let (_reports, count, fails) = check_files(files);
+    let (_reports, count, fails) = check_files(files, None);
 
     // Display results.
     println!("Ran {} system tests.", count);
@@ -123,7 +124,7 @@ fn system_tests() {
 #[test]
 fn coverage_tests() {
     let files = get_test_files(Path::new("tests/coverage/source"), true);
-    let (_reports, count, fails) = check_files(files);
+    let (_reports, count, fails) = check_files(files, None);
 
     println!("Ran {} tests in coverage mode.", count);
     assert_eq!(fails, 0, "{} tests failed", fails);
@@ -190,9 +191,13 @@ fn assert_output(source: &Path, expected_filename: &Path) {
 // rustfmt.
 #[test]
 fn idempotence_tests() {
+    match option_env!("CFG_RELEASE_CHANNEL") {
+        None | Some("nightly") => {}
+        _ => return, // these tests require nightly
+    }
     // Get all files in the tests/target directory.
     let files = get_test_files(Path::new("tests/target"), true);
-    let (_reports, count, fails) = check_files(files);
+    let (_reports, count, fails) = check_files(files, None);
 
     // Display results.
     println!("Ran {} idempotent tests.", count);
@@ -213,7 +218,7 @@ fn self_tests() {
     }
     files.push(PathBuf::from("src/lib.rs"));
 
-    let (reports, count, fails) = check_files(files);
+    let (reports, count, fails) = check_files(files, Some(PathBuf::from("rustfmt.toml")));
     let mut warnings = 0;
 
     // Display results.
@@ -298,7 +303,7 @@ fn format_lines_errors_are_reported_with_tabs() {
 
 // For each file, run rustfmt and collect the output.
 // Returns the number of files checked and the number of failures.
-fn check_files(files: Vec<PathBuf>) -> (Vec<FormatReport>, u32, u32) {
+fn check_files(files: Vec<PathBuf>, opt_config: Option<PathBuf>) -> (Vec<FormatReport>, u32, u32) {
     let mut count = 0;
     let mut fails = 0;
     let mut reports = vec![];
@@ -306,7 +311,7 @@ fn check_files(files: Vec<PathBuf>) -> (Vec<FormatReport>, u32, u32) {
     for file_name in files {
         debug!("Testing '{}'...", file_name.display());
 
-        match idempotent_check(&file_name) {
+        match idempotent_check(&file_name, &opt_config) {
             Ok(ref report) if report.has_warnings() => {
                 print!("{}", report);
                 fails += 1;
@@ -385,9 +390,16 @@ pub enum IdempotentCheckError {
     Parse,
 }
 
-pub fn idempotent_check(filename: &PathBuf) -> Result<FormatReport, IdempotentCheckError> {
+pub fn idempotent_check(
+    filename: &PathBuf,
+    opt_config: &Option<PathBuf>,
+) -> Result<FormatReport, IdempotentCheckError> {
     let sig_comments = read_significant_comments(filename);
-    let config = read_config(filename);
+    let config = if let Some(ref config_file_path) = opt_config {
+        Config::from_toml_path(config_file_path).expect("rustfmt.toml not found")
+    } else {
+        read_config(filename)
+    };
     let (error_summary, file_map, format_report) = format_file(filename, &config);
     if error_summary.has_parsing_errors() {
         return Err(IdempotentCheckError::Parse);
@@ -611,8 +623,9 @@ impl ConfigurationSection {
         lazy_static! {
             static ref CONFIG_NAME_REGEX: regex::Regex =
                 regex::Regex::new(r"^## `([^`]+)`").expect("Failed creating configuration pattern");
-            static ref CONFIG_VALUE_REGEX: regex::Regex = regex::Regex::new(r#"^#### `"?([^`"]+)"?`"#)
-                .expect("Failed creating configuration value pattern");
+            static ref CONFIG_VALUE_REGEX: regex::Regex =
+                regex::Regex::new(r#"^#### `"?([^`"]+)"?`"#)
+                    .expect("Failed creating configuration value pattern");
         }
 
         loop {
@@ -620,7 +633,8 @@ impl ConfigurationSection {
                 Some((i, line)) => {
                     if line.starts_with("```rust") {
                         // Get the lines of the code block.
-                        let lines: Vec<String> = file.map(|(_i, l)| l)
+                        let lines: Vec<String> = file
+                            .map(|(_i, l)| l)
                             .take_while(|l| !l.starts_with("```"))
                             .collect();
                         let block = format!("{}\n", lines.join("\n"));
@@ -690,13 +704,14 @@ impl ConfigCodeBlock {
         // We never expect to not have a code block.
         assert!(self.code_block.is_some() && self.code_block_start.is_some());
 
-        // See if code block begins with #![rustfmt_skip].
-        let fmt_skip = self.code_block
+        // See if code block begins with #![rustfmt::skip].
+        let fmt_skip = self
+            .code_block
             .as_ref()
             .unwrap()
             .split('\n')
             .nth(0)
-            .unwrap_or("") == "#![rustfmt_skip]";
+            .unwrap_or("") == "#![rustfmt::skip]";
 
         if self.config_name.is_none() && !fmt_skip {
             write_message(&format!(
@@ -775,7 +790,7 @@ impl ConfigCodeBlock {
     // - Rust code blocks are identifed by lines beginning with "```rust".
     // - One explicit configuration setting is supported per code block.
     // - Rust code blocks with no configuration setting are illegal and cause an
-    //   assertion failure, unless the snippet begins with #![rustfmt_skip].
+    //   assertion failure, unless the snippet begins with #![rustfmt::skip].
     // - Configuration names in Configurations.md must be in the form of
     //   "## `NAME`".
     // - Configuration values in Configurations.md must be in the form of
@@ -884,29 +899,20 @@ impl Drop for TempFile {
     }
 }
 
+fn rustfmt() -> PathBuf {
+    let mut me = env::current_exe().expect("failed to get current executable");
+    me.pop(); // chop of the test name
+    me.pop(); // chop off `deps`
+    me.push("rustfmt");
+    return me;
+}
+
 #[test]
 fn verify_check_works() {
     let temp_file = make_temp_file("temp_check.rs");
     assert_cli::Assert::command(&[
-        "cargo",
-        "run",
-        "--bin=rustfmt",
-        "--",
-        "--write-mode=check",
-        temp_file.path.to_str().unwrap(),
-    ]).succeeds()
-        .unwrap();
-}
-
-#[test]
-fn verify_diff_works() {
-    let temp_file = make_temp_file("temp_diff.rs");
-    assert_cli::Assert::command(&[
-        "cargo",
-        "run",
-        "--bin=rustfmt",
-        "--",
-        "--write-mode=diff",
+        rustfmt().to_str().unwrap(),
+        "--check",
         temp_file.path.to_str().unwrap(),
     ]).succeeds()
         .unwrap();

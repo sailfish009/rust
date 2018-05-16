@@ -196,7 +196,7 @@ fn rewrite_match_arms(
 
     let arm_len = arms.len();
     let is_last_iter = repeat(false)
-        .take(arm_len.checked_sub(1).unwrap_or(0))
+        .take(arm_len.saturating_sub(1))
         .chain(repeat(true));
     let beginning_verts = collect_beginning_verts(context, arms, span);
     let items = itemize_list(
@@ -498,7 +498,8 @@ fn rewrite_guard(
 fn nop_block_collapse(block_str: Option<String>, budget: usize) -> Option<String> {
     debug!("nop_block_collapse {:?} {}", block_str, budget);
     block_str.map(|block_str| {
-        if block_str.starts_with('{') && budget >= 2
+        if block_str.starts_with('{')
+            && budget >= 2
             && (block_str[1..].find(|c: char| !c.is_whitespace()).unwrap() == block_str.len() - 2)
         {
             "{}".to_owned()

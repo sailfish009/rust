@@ -36,14 +36,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use url::Url;
 
-pub fn initialize<'a>(
+pub fn initialize(
     id: usize,
     root_path: Option<String>,
 ) -> Request<ls_server::InitializeRequest> {
     initialize_with_opts(id, root_path, None)
 }
 
-pub fn initialize_with_opts<'a>(
+pub fn initialize_with_opts(
     id: usize,
     root_path: Option<String>,
     initialization_options: Option<InitializationOptions>,
@@ -81,7 +81,7 @@ pub fn blocking_request<T: ls_server::BlockingRequestAction>(
     }
 }
 
-pub fn request<'a, T: ls_server::RequestAction>(id: usize, params: T::Params) -> Request<T> {
+pub fn request<T: ls_server::RequestAction>(id: usize, params: T::Params) -> Request<T> {
     Request {
         id,
         params,
@@ -90,7 +90,7 @@ pub fn request<'a, T: ls_server::RequestAction>(id: usize, params: T::Params) ->
     }
 }
 
-fn notification<'a, A: ls_server::BlockingNotificationAction>(params: A::Params) -> Notification<A> {
+fn notification<A: ls_server::BlockingNotificationAction>(params: A::Params) -> Notification<A> {
     Notification {
         params,
         _action: PhantomData,
@@ -119,6 +119,7 @@ fn test_shutdown() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -166,6 +167,7 @@ fn test_goto_def() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -219,6 +221,7 @@ fn test_hover() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -305,6 +308,7 @@ fn test_hover_after_src_line_change() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
@@ -334,6 +338,7 @@ fn test_hover_after_src_line_change() {
         results.clone(),
         &[
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -478,6 +483,7 @@ fn test_find_all_refs() {
 #[test]
 fn test_find_all_refs_no_cfg_test() {
     let mut env = Environment::new("find_all_refs_no_cfg_test");
+    env.with_config(|c| c.all_targets = false);
 
     let source_file_path = Path::new("src").join("main.rs");
 
@@ -556,6 +562,7 @@ fn test_borrow_error() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("borrow_error"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("borrow_error"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains(
@@ -599,6 +606,7 @@ fn test_highlight() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -658,6 +666,7 @@ fn test_rename() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -721,6 +730,7 @@ fn test_reformat() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("reformat"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("reformat"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
@@ -782,6 +792,7 @@ fn test_reformat_with_range() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("reformat_with_range"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("reformat_with_range"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
@@ -821,6 +832,8 @@ fn test_multiple_binaries() {
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
                                                                                            // order of these is random
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("bin"), // "bin1"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("bin"), // "bin1"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("bin"), // "bin2"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("bin"), // "bin2"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -948,7 +961,6 @@ fn test_bin_lib_project() {
 //         initialize(0, root_path.as_os_str().to_str().map(|x| x.to_owned())).to_string(),
 //     ];
 
-//     env.with_config(|c| c.workspace_mode = true);
 //     let (mut server, results) = env.mock_server(messages);
 //     // Initialize and build.
 //     assert_eq!(ls_server::LsService::handle_message(&mut server),
@@ -984,6 +996,7 @@ fn test_infer_lib() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("infer_lib"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("infer_lib"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("struct is never used: `UnusedLib`"),
@@ -1013,6 +1026,7 @@ fn test_infer_bin() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("infer_bin"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("infer_bin"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("struct is never used: `UnusedBin`"),
@@ -1041,6 +1055,7 @@ fn test_infer_custom_bin() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("custom_bin"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("custom_bin"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -1167,6 +1182,7 @@ fn test_find_impls() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("find_impls"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("find_impls"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
@@ -1224,6 +1240,7 @@ fn test_features() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains(
@@ -1256,6 +1273,7 @@ fn test_all_features() {
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
@@ -1287,6 +1305,7 @@ fn test_no_default_features() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("capabilities"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("features"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -1406,6 +1425,7 @@ fn test_deglob() {
         &[
             ExpectedMessage::new(Some(0)).expect_contains("rls.deglobImports"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("deglob"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains("deglob"),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
@@ -1564,6 +1584,128 @@ fn test_all_targets() {
             ExpectedMessage::new(None)
                 .expect_contains(r#"bin_lib/tests/tests.rs"#)
                 .expect_contains(r#"unused variable: `unused_var`"#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
+        ],
+    );
+}
+
+/// Handle receiving a notification before the `initialize` request by ignoring and
+/// continuing to run
+#[test]
+fn ignore_uninitialized_notification() {
+    let mut env = Environment::new("common");
+
+    let source_file_path = Path::new("src").join("main.rs");
+
+    let root_path = env.cache.abs_path(Path::new("."));
+    let url = Url::from_file_path(env.cache.abs_path(&source_file_path))
+        .expect("couldn't convert file path to URL");
+
+    let messages = vec![
+        notification::<notifications::DidChangeTextDocument>(
+            DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: url.clone(),
+                    version: Some(2),
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: Some(Range {
+                        start: Position { line: 19, character: 15 },
+                        end: Position { line: 19, character: 15 },
+                    }),
+                    range_length: Some(0),
+                    text: "\n    ".into(),
+                }],
+            },
+        ).to_string(),
+        initialize(1, root_path.as_os_str().to_str().map(|x| x.to_owned())).to_string(),
+    ];
+
+    let (mut server, results) = env.mock_server(messages);
+
+    // Ignore notification
+    assert_eq!(
+        ls_server::LsService::handle_message(&mut server),
+        ls_server::ServerStateChange::Continue
+    );
+    expect_messages(results.clone(), &[]);
+
+    // Initialize and build
+    assert_eq!(
+        ls_server::LsService::handle_message(&mut server),
+        ls_server::ServerStateChange::Continue
+    );
+    expect_messages(
+        results.clone(),
+        &[
+            ExpectedMessage::new(Some(1)).expect_contains("capabilities"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
+        ],
+    );
+}
+
+/// Handle receiving requests before the `initialize` request by returning an error response
+/// and continuing to run
+#[test]
+fn fail_uninitialized_request() {
+    let mut env = Environment::new("common");
+
+    let source_file_path = Path::new("src").join("main.rs");
+    let root_path = env.cache.abs_path(Path::new("."));
+    let url = Url::from_file_path(env.cache.abs_path(&source_file_path))
+        .expect("couldn't convert file path to URL");
+
+    let messages = vec![
+        request::<requests::Definition>(
+            0,
+            TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(url),
+                position: env.cache
+                    .mk_ls_position(src(&source_file_path, 22, "world")),
+            },
+        ).to_string(),
+        initialize(1, root_path.as_os_str().to_str().map(|x| x.to_owned())).to_string(),
+    ];
+
+    let (mut server, results) = env.mock_server(messages);
+
+    // Return error response to pre `initialize` request, keep running.
+    assert_eq!(
+        ls_server::LsService::handle_message(&mut server),
+        ls_server::ServerStateChange::Continue
+    );
+    {
+        wait_for_n_results!(1, results);
+        let response = json::parse(&results.lock().unwrap().remove(0)).unwrap();
+        assert_eq!(response["id"], 0);
+        assert_eq!(response["error"]["code"], -32002);
+        let message = response["error"]["message"].as_str().unwrap();
+        assert!(
+            message.to_lowercase().contains("initialize"),
+            "Unexpected error.message `{}`",
+            message,
+        );
+    }
+
+    // Initialize and build.
+    assert_eq!(
+        ls_server::LsService::handle_message(&mut server),
+        ls_server::ServerStateChange::Continue
+    );
+    expect_messages(
+        results.clone(),
+        &[
+            ExpectedMessage::new(Some(1)).expect_contains("capabilities"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Building""#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains("completion"),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
+            ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#"title":"Indexing""#),
             ExpectedMessage::new(None).expect_contains("progress").expect_contains(r#""done":true"#),
         ],
     );

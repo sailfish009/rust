@@ -1,5 +1,6 @@
 // rustfmt-normalize_comments: true
 // rustfmt-wrap_comments: true
+// rustfmt-remove_nested_parens: true
 // Test expressions
 
 fn foo() -> bool {
@@ -389,4 +390,11 @@ fn dots() {
     .. .. ..; // (.. (.. (..)))
     ..= ..= ..;
     (..) .. ..; // ((..) .. (..))
+}
+
+// #2676
+// A function call with a large single argument.
+fn foo() {
+    let my_var =
+        Mutex::new(RpcClientType::connect(server_iddd).chain_err(|| "Unable to create RPC client")?);
 }

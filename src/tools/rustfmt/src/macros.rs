@@ -269,7 +269,8 @@ pub fn rewrite_macro_inner(
                 let nested_shape = mac_shape.block_indent(context.config.tab_spaces());
                 let lhs = arg_vec[0].rewrite(context, nested_shape)?;
                 let rhs = arg_vec[1].rewrite(context, nested_shape)?;
-                if !lhs.contains('\n') && !rhs.contains('\n')
+                if !lhs.contains('\n')
+                    && !rhs.contains('\n')
                     && lhs.len() + rhs.len() + total_overhead <= shape.width
                 {
                     Some(format!("{}{}{}; {}{}", macro_name, lbr, lhs, rhs, rbr))
@@ -1090,9 +1091,7 @@ fn indent_macro_snippet(
                         _ if !trimmed => line.to_owned(),
                         Some(original_indent_width) => {
                             let new_indent_width = indent.width()
-                                + original_indent_width
-                                    .checked_sub(min_prefix_space_width)
-                                    .unwrap_or(0);
+                                + original_indent_width.saturating_sub(min_prefix_space_width);
                             let new_indent = Indent::from_width(context.config, new_indent_width);
                             format!("{}{}", new_indent.to_string(context.config), line.trim())
                         }
@@ -1296,7 +1295,9 @@ impl MacroBranch {
 fn format_lazy_static(context: &RewriteContext, shape: Shape, ts: &TokenStream) -> Option<String> {
     let mut result = String::with_capacity(1024);
     let mut parser = new_parser_from_tts(context.parse_session, ts.trees().collect());
-    let nested_shape = shape.block_indent(context.config.tab_spaces());
+    let nested_shape = shape
+        .block_indent(context.config.tab_spaces())
+        .with_max_width(context.config);
 
     result.push_str("lazy_static! {");
     result.push_str(&nested_shape.indent.to_string_with_newline(context.config));

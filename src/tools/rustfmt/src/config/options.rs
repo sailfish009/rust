@@ -14,7 +14,7 @@ use config::config_type::ConfigType;
 use config::file_lines::FileLines;
 use config::lists::*;
 use config::Config;
-use {FmtResult, WRITE_MODE_LIST};
+use FmtResult;
 
 use failure::err_msg;
 
@@ -174,28 +174,32 @@ configuration_option_enum! { ReportTactic:
 }
 
 configuration_option_enum! { WriteMode:
-    // Backs the original file up and overwrites the original.
-    Replace,
     // Overwrites original file without backup.
     Overwrite,
+    // Backs the original file up and overwrites the original.
+    Replace,
     // Writes the output to stdout.
     Display,
-    // Writes the diff to stdout.
-    Diff,
     // Displays how much of the input file was processed
     Coverage,
     // Unfancy stdout
-    Plain,
-    // Outputs a checkstyle XML file.
     Checkstyle,
     // Output the changed lines (for internal value only)
     Modified,
     // Checks if a diff can be generated. If so, rustfmt outputs a diff and quits with exit code 1.
-    // This option is designed to be run in CI where a non-zero exit signifies non-standard code formatting.
+    // This option is designed to be run in CI where a non-zero exit signifies non-standard code
+    // formatting.
     Check,
     // Rustfmt shouldn't output anything formatting-like (e.g., emit a help message).
     None,
 }
+
+const STABLE_WRITE_MODES: [WriteMode; 4] = [
+    WriteMode::Replace,
+    WriteMode::Overwrite,
+    WriteMode::Display,
+    WriteMode::Check,
+];
 
 configuration_option_enum! { Color:
     // Always use color, whether it is a piped or terminal output
@@ -204,6 +208,14 @@ configuration_option_enum! { Color:
     Never,
     // Automatically use color, if supported by terminal
     Auto,
+}
+
+configuration_option_enum! { Verbosity:
+    // Emit more.
+    Verbose,
+    Normal,
+    // Emit as little as possible.
+    Quiet,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -281,7 +293,8 @@ pub struct IgnoreList(HashSet<PathBuf>);
 
 impl IgnoreList {
     pub fn add_prefix(&mut self, dir: &Path) {
-        self.0 = self.0
+        self.0 = self
+            .0
             .iter()
             .map(|s| {
                 if s.has_root() {
@@ -319,45 +332,69 @@ impl ::std::str::FromStr for IgnoreList {
 /// Parsed command line options.
 #[derive(Clone, Debug, Default)]
 pub struct CliOptions {
-    skip_children: Option<bool>,
-    verbose: bool,
-    verbose_diff: bool,
-    pub(super) config_path: Option<PathBuf>,
-    write_mode: Option<WriteMode>,
-    color: Option<Color>,
-    file_lines: FileLines, // Default is all lines in all files.
-    unstable_features: bool,
-    error_on_unformatted: Option<bool>,
+    pub skip_children: Option<bool>,
+    pub quiet: bool,
+    pub verbose: bool,
+    pub config_path: Option<PathBuf>,
+    pub write_mode: WriteMode,
+    pub check: bool,
+    pub color: Option<Color>,
+    pub file_lines: FileLines, // Default is all lines in all files.
+    pub unstable_features: bool,
+    pub error_on_unformatted: Option<bool>,
 }
 
 impl CliOptions {
     pub fn from_matches(matches: &Matches) -> FmtResult<CliOptions> {
         let mut options = CliOptions::default();
         options.verbose = matches.opt_present("verbose");
-        options.verbose_diff = matches.opt_present("verbose-diff");
+        options.quiet = matches.opt_present("quiet");
+        if options.verbose && options.quiet {
+            return Err(format_err!("Can't use both `--verbose` and `--quiet`"));
+        }
 
-        let unstable_features = matches.opt_present("unstable-features");
         let rust_nightly = option_env!("CFG_RELEASE_CHANNEL")
             .map(|c| c == "nightly")
             .unwrap_or(false);
-        if unstable_features && !rust_nightly {
-            return Err(format_err!(
-                "Unstable features are only available on Nightly channel"
-            ));
-        } else {
-            options.unstable_features = unstable_features;
+        if rust_nightly {
+            options.unstable_features = matches.opt_present("unstable-features");
+        }
+
+        if options.unstable_features {
+            if matches.opt_present("skip-children") {
+                options.skip_children = Some(true);
+            }
+            if matches.opt_present("error-on-unformatted") {
+                options.error_on_unformatted = Some(true);
+            }
+            if let Some(ref file_lines) = matches.opt_str("file-lines") {
+                options.file_lines = file_lines.parse().map_err(err_msg)?;
+            }
         }
 
         options.config_path = matches.opt_str("config-path").map(PathBuf::from);
 
-        if let Some(ref write_mode) = matches.opt_str("write-mode") {
-            if let Ok(write_mode) = WriteMode::from_str(write_mode) {
-                options.write_mode = Some(write_mode);
+        options.check = matches.opt_present("check");
+        if let Some(ref emit_str) = matches.opt_str("emit") {
+            if options.check {
+                return Err(format_err!("Invalid to use `--emit` and `--check`"));
+            }
+            if let Ok(write_mode) = write_mode_from_emit_str(emit_str) {
+                options.write_mode = write_mode;
             } else {
+                return Err(format_err!("Invalid value for `--emit`"));
+            }
+        }
+
+        if options.write_mode == WriteMode::Overwrite && matches.opt_present("backup") {
+            options.write_mode = WriteMode::Replace;
+        }
+
+        if !rust_nightly {
+            if !STABLE_WRITE_MODES.contains(&options.write_mode) {
                 return Err(format_err!(
-                    "Invalid write-mode: {}, expected one of {}",
-                    write_mode,
-                    WRITE_MODE_LIST
+                    "Invalid value for `--emit` - using an unstable \
+                     value without `--unstable-features`",
                 ));
             }
         }
@@ -369,23 +406,17 @@ impl CliOptions {
             }
         }
 
-        if let Some(ref file_lines) = matches.opt_str("file-lines") {
-            options.file_lines = file_lines.parse().map_err(err_msg)?;
-        }
-
-        if matches.opt_present("skip-children") {
-            options.skip_children = Some(true);
-        }
-        if matches.opt_present("error-on-unformatted") {
-            options.error_on_unformatted = Some(true);
-        }
-
         Ok(options)
     }
 
     pub fn apply_to(self, config: &mut Config) {
-        config.set().verbose(self.verbose);
-        config.set().verbose_diff(self.verbose_diff);
+        if self.verbose {
+            config.set().verbose(Verbosity::Verbose);
+        } else if self.quiet {
+            config.set().verbose(Verbosity::Quiet);
+        } else {
+            config.set().verbose(Verbosity::Normal);
+        }
         config.set().file_lines(self.file_lines);
         config.set().unstable_features(self.unstable_features);
         if let Some(skip_children) = self.skip_children {
@@ -394,8 +425,10 @@ impl CliOptions {
         if let Some(error_on_unformatted) = self.error_on_unformatted {
             config.set().error_on_unformatted(error_on_unformatted);
         }
-        if let Some(write_mode) = self.write_mode {
-            config.set().write_mode(write_mode);
+        if self.check {
+            config.set().write_mode(WriteMode::Check);
+        } else {
+            config.set().write_mode(self.write_mode);
         }
         if let Some(color) = self.color {
             config.set().color(color);
@@ -412,5 +445,15 @@ impl CliOptions {
                 _ => eprintln!("Warning: Not a file '{}'", f),
             }
         }
+    }
+}
+
+fn write_mode_from_emit_str(emit_str: &str) -> FmtResult<WriteMode> {
+    match emit_str {
+        "files" => Ok(WriteMode::Overwrite),
+        "stdout" => Ok(WriteMode::Display),
+        "coverage" => Ok(WriteMode::Coverage),
+        "checkstyle" => Ok(WriteMode::Checkstyle),
+        _ => Err(format_err!("Invalid value for `--emit`")),
     }
 }

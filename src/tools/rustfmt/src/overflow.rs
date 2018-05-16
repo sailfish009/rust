@@ -147,10 +147,7 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
             1
         };
         let used_width = extra_offset(ident, shape);
-        let one_line_width = shape
-            .width
-            .checked_sub(used_width + 2 * paren_overhead)
-            .unwrap_or(0);
+        let one_line_width = shape.width.saturating_sub(used_width + 2 * paren_overhead);
 
         // 1 = "(" or ")"
         let one_line_shape = shape
@@ -184,7 +181,8 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
     }
 
     fn items_span(&self) -> Span {
-        let span_lo = self.context
+        let span_lo = self
+            .context
             .snippet_provider
             .span_after(self.span, self.prefix);
         mk_sp(span_lo, self.span.hi())
@@ -235,7 +233,8 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
 
     fn try_overflow_last_item(&self, list_items: &mut Vec<ListItem>) -> DefinitiveListTactic {
         // 1 = "("
-        let combine_arg_with_callee = self.items.len() == 1 && self.items[0].to_expr().is_some()
+        let combine_arg_with_callee = self.items.len() == 1
+            && self.items[0].to_expr().is_some()
             && self.ident.len() + 1 <= self.context.config.tab_spaces();
         let overflow_last = combine_arg_with_callee || can_be_overflowed(self.context, self.items);
 
@@ -287,7 +286,8 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
                 // formatted code, where a prefix or a suffix being left on its own
                 // line. Here we explicitlly check those cases.
                 if count_newlines(overflowed) == 1 {
-                    let rw = self.items
+                    let rw = self
+                        .items
                         .last()
                         .and_then(|last_item| last_item.rewrite(self.context, self.nested_shape));
                     let no_newline = rw.as_ref().map_or(false, |s| !s.contains('\n'));
@@ -304,14 +304,17 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
                 list_items[self.items.len() - 1].item = placeholder;
             }
             _ if self.items.len() >= 1 => {
-                list_items[self.items.len() - 1].item = self.items
+                list_items[self.items.len() - 1].item = self
+                    .items
                     .last()
                     .and_then(|last_item| last_item.rewrite(self.context, self.nested_shape));
 
                 // Use horizontal layout for a function with a single argument as long as
                 // everything fits in a single line.
                 // `self.one_line_width == 0` means vertical layout is forced.
-                if self.items.len() == 1 && self.one_line_width != 0 && !list_items[0].has_comment()
+                if self.items.len() == 1
+                    && self.one_line_width != 0
+                    && !list_items[0].has_comment()
                     && !list_items[0].inner_as_ref().contains('\n')
                     && ::lists::total_item_width(&list_items[0]) <= self.one_line_width
                 {
@@ -406,10 +409,7 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
 
     fn wrap_items(&self, items_str: &str, shape: Shape, is_extendable: bool) -> String {
         let shape = Shape {
-            width: shape
-                .width
-                .checked_sub(last_line_width(self.ident))
-                .unwrap_or(0),
+            width: shape.width.saturating_sub(last_line_width(self.ident)),
             ..shape
         };
 
@@ -422,9 +422,10 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
         let extend_width = if items_str.is_empty() {
             paren_overhead
         } else {
-            paren_overhead / 2
+            first_line_width(items_str) + (paren_overhead / 2)
         };
-        let nested_indent_str = self.nested_shape
+        let nested_indent_str = self
+            .nested_shape
             .indent
             .to_string_with_newline(self.context.config);
         let indent_str = shape
@@ -462,7 +463,8 @@ impl<'a, T: 'a + Rewrite + ToExpr + Spanned> Context<'a, T> {
         let (extendable, items_str) = self.rewrite_items()?;
 
         // If we are using visual indent style and failed to format, retry with block indent.
-        if !self.context.use_block_indent() && need_block_indent(&items_str, self.nested_shape)
+        if !self.context.use_block_indent()
+            && need_block_indent(&items_str, self.nested_shape)
             && !extendable
         {
             self.context.use_block.replace(true);

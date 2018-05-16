@@ -64,7 +64,12 @@ fn main() {
 
 ```rust
 fn main() {
-    if lorem_ipsum && dolor_sit && amet_consectetur && lorem_sit && dolor_consectetur && amet_ipsum
+    if lorem_ipsum
+        && dolor_sit
+        && amet_consectetur
+        && lorem_sit
+        && dolor_consectetur
+        && amet_ipsum
         && lorem_consectetur
     {
         // ...
@@ -76,7 +81,12 @@ fn main() {
 
 ```rust
 fn main() {
-    if lorem_ipsum && dolor_sit && amet_consectetur && lorem_sit && dolor_consectetur && amet_ipsum
+    if lorem_ipsum
+       && dolor_sit
+       && amet_consectetur
+       && lorem_sit
+       && dolor_consectetur
+       && amet_ipsum
        && lorem_consectetur
     {
         // ...
@@ -342,7 +352,8 @@ fn main() {
     let or = foofoofoofoofoofoofoofoofoofoofoofoofoofoofoofoo
         || barbarbarbarbarbarbarbarbarbarbarbarbarbarbarbar;
 
-    let sum = 123456789012345678901234567890 + 123456789012345678901234567890
+    let sum = 123456789012345678901234567890
+        + 123456789012345678901234567890
         + 123456789012345678901234567890;
 
     let range = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -357,7 +368,8 @@ fn main() {
     let or = foofoofoofoofoofoofoofoofoofoofoofoofoofoofoofoo ||
         barbarbarbarbarbarbarbarbarbarbarbarbarbarbarbar;
 
-    let sum = 123456789012345678901234567890 + 123456789012345678901234567890 +
+    let sum = 123456789012345678901234567890 +
+        123456789012345678901234567890 +
         123456789012345678901234567890;
 
     let range = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..
@@ -1270,6 +1282,28 @@ fn dolor() -> usize {}
 fn adipiscing() -> usize {}
 ```
 
+## `remove_nested_parens`
+
+Remove nested parens.
+
+- **Defalut value**: `false`,
+- **Possible values**: `true`, `false`
+- **Stable**: No
+
+#### `false` (default):
+```rust
+fn main() {
+    ((((foo()))));
+}
+```
+
+#### `true`:
+```rust
+fn main() {
+    (foo());
+}
+```
+
 
 ## `reorder_imports`
 
@@ -1917,7 +1951,7 @@ lines are found, they are trimmed down to match this integer.
 Original Code:
 
 ```rust
-#![rustfmt_skip]
+#![rustfmt::skip]
 
 fn foo() {
     println!("a");
@@ -1976,7 +2010,7 @@ them, additional blank lines are inserted.
 Original Code (rustfmt will not change it with the default value of `0`):
 
 ```rust
-#![rustfmt_skip]
+#![rustfmt::skip]
 
 fn foo() {
     println!("a");
