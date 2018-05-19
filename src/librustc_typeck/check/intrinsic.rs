@@ -72,7 +72,7 @@ fn equate_intrinsic_type<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
     require_same_types(tcx, &cause, tcx.mk_fn_ptr(tcx.fn_sig(def_id)), fty);
 }
 
-/// Remember to add all intrinsics here, in librustc_trans/trans/intrinsic.rs,
+/// Remember to add all intrinsics here, in librustc_codegen_llvm/intrinsic.rs,
 /// and in libcore/intrinsics.rs
 pub fn check_intrinsic_type<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                                       it: &hir::ForeignItem) {
@@ -313,11 +313,6 @@ pub fn check_intrinsic_type<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                 ));
                 (0, vec![tcx.mk_fn_ptr(fn_ty), mut_u8, mut_u8], tcx.types.i32)
             }
-
-            "align_offset" => {
-                let ptr_ty = tcx.mk_imm_ptr(tcx.mk_nil());
-                (0, vec![ptr_ty, tcx.types.usize], tcx.types.usize)
-            },
 
             "nontemporal_store" => {
                 (1, vec![ tcx.mk_mut_ptr(param(0)), param(0) ], tcx.mk_nil())

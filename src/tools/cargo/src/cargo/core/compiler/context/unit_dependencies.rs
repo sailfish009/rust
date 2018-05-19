@@ -148,6 +148,40 @@ fn compute_deps<'a, 'b, 'cfg>(
     }
     ret.extend(maybe_lib(unit, bcx, profile_for));
 
+    // If any integration tests/benches are being run, make sure that
+    // binaries are built as well.
+    if !unit.mode.is_check() && unit.mode.is_any_test()
+        && (unit.target.is_test() || unit.target.is_bench())
+    {
+        ret.extend(
+            unit.pkg
+                .targets()
+                .iter()
+                .filter(|t| {
+                    let no_required_features = Vec::new();
+
+                    t.is_bin() &&
+                        // Skip binaries with required features that have not been selected.
+                        t.required_features().unwrap_or(&no_required_features).iter().all(|f| {
+                            bcx.resolve.features(id).contains(f)
+                        })
+                })
+                .map(|t| {
+                    (
+                        new_unit(
+                            bcx,
+                            unit.pkg,
+                            t,
+                            ProfileFor::Any,
+                            unit.kind.for_target(t),
+                            CompileMode::Build,
+                        ),
+                        ProfileFor::Any,
+                    )
+                }),
+        );
+    }
+
     Ok(ret)
 }
 
@@ -267,8 +301,8 @@ fn maybe_lib<'a>(
     bcx: &BuildContext,
     profile_for: ProfileFor,
 ) -> Option<(Unit<'a>, ProfileFor)> {
-    let mode = check_or_build_mode(&unit.mode, unit.target);
     unit.pkg.targets().iter().find(|t| t.linkable()).map(|t| {
+        let mode = check_or_build_mode(&unit.mode, t);
         let unit = new_unit(bcx, unit.pkg, t, profile_for, unit.kind.for_target(t), mode);
         (unit, profile_for)
     })

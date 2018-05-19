@@ -170,7 +170,7 @@ pub fn compile<'a>(
     compile_with_exec(ws, options, Arc::new(DefaultExecutor))
 }
 
-/// Like `compile` but allows specifing a custom `Executor` that will be able to intercept build
+/// Like `compile` but allows specifying a custom `Executor` that will be able to intercept build
 /// calls and add custom logic. `compile` uses `DefaultExecutor` which just passes calls through.
 pub fn compile_with_exec<'a>(
     ws: &Workspace<'a>,
@@ -612,19 +612,6 @@ fn generate_targets<'a>(
                         .collect::<Vec<_>>(),
                 );
             }
-        }
-
-        // If any integration tests/benches are being run, make sure that
-        // binaries are built as well.
-        if !build_config.mode.is_check() && proposals.iter().any(|&(ref unit, _)| {
-            unit.mode.is_any_test() && (unit.target.is_test() || unit.target.is_bench())
-        }) {
-            proposals.extend(
-                pkg.targets()
-                    .iter()
-                    .filter(|t| t.is_bin())
-                    .map(|t| (new_unit(pkg, t, CompileMode::Build), false)),
-            );
         }
 
         // Only include targets that are libraries or have all required
