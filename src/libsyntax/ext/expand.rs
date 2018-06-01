@@ -13,7 +13,7 @@ use ast::{MacStmtStyle, StmtKind, ItemKind};
 use attr::{self, HasAttrs};
 use codemap::{ExpnInfo, NameAndSpan, MacroBang, MacroAttribute, dummy_spanned, respan};
 use config::{is_test_or_bench, StripUnconfigured};
-use errors::FatalError;
+use errors::{Applicability, FatalError};
 use ext::base::*;
 use ext::derive::{add_derived_markers, collect_derives};
 use ext::hygiene::{self, Mark, SyntaxContext};
@@ -178,7 +178,7 @@ fn macro_bang_format(path: &ast::Path) -> ExpnFormat {
         if segment.ident.name != keywords::CrateRoot.name() &&
             segment.ident.name != keywords::DollarCrate.name()
         {
-            path_str.push_str(&segment.ident.name.as_str())
+            path_str.push_str(&segment.ident.as_str())
         }
     }
 
@@ -331,7 +331,11 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                             let trait_list = traits.iter()
                                 .map(|t| format!("{}", t)).collect::<Vec<_>>();
                             let suggestion = format!("#[derive({})]", trait_list.join(", "));
-                            err.span_suggestion(span, "try an outer attribute", suggestion);
+                            err.span_suggestion_with_applicability(
+                                span, "try an outer attribute", suggestion,
+                                // We don't 𝑘𝑛𝑜𝑤 that the following item is an ADT
+                                Applicability::MaybeIncorrect
+                            );
                         }
                         err.emit();
                     }
@@ -1266,7 +1270,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
                             DirectoryOwnership::Owned { relative: None };
                         module.directory.push(&*path.as_str());
                     } else {
-                        module.directory.push(&*item.ident.name.as_str());
+                        module.directory.push(&*item.ident.as_str());
                     }
                 } else {
                     let path = self.cx.parse_sess.codemap().span_to_unmapped_path(inner);

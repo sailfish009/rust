@@ -13,13 +13,13 @@
 #![allow(unused_attributes)]
 #![feature(type_ascription)]
 #![feature(unicode_internals)]
+#![feature(extern_prelude)]
 
 #[macro_use]
 extern crate derive_new;
 extern crate diff;
-#[macro_use]
 extern crate failure;
-extern crate getopts;
+extern crate isatty;
 extern crate itertools;
 #[cfg(test)]
 #[macro_use]
@@ -33,21 +33,19 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate syntax;
-extern crate term;
 extern crate toml;
 extern crate unicode_segmentation;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::io::{self, stdout, Write};
+use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
 use syntax::ast;
-pub use syntax::codemap::FileName;
 use syntax::codemap::{CodeMap, FilePathMapping, Span};
 use syntax::errors::emitter::{ColorConfig, EmitterWriter};
 use syntax::errors::{DiagnosticBuilder, Handler};
@@ -57,14 +55,13 @@ use comment::{CharClasses, FullCodeCharKind, LineClasses};
 use failure::Fail;
 use issues::{BadIssueSeeker, Issue};
 use shape::Indent;
-use utils::use_colored_tty;
 use visitor::{FmtVisitor, SnippetProvider};
 
-pub use config::options::CliOptions;
+pub use checkstyle::{footer as checkstyle_footer, header as checkstyle_header};
 pub use config::summary::Summary;
-pub use config::{file_lines, load_config, Config, Verbosity, WriteMode};
-
-pub type FmtResult<T> = std::result::Result<T, failure::Error>;
+pub use config::{
+    load_config, CliOptions, Color, Config, EmitMode, FileLines, FileName, Range, Verbosity,
+};
 
 #[macro_use]
 mod utils;
@@ -100,16 +97,16 @@ mod types;
 mod vertical;
 pub(crate) mod visitor;
 
-const STDIN: &str = "<stdin>";
-
 // A map of the files of a crate, with their new content
 pub(crate) type FileMap = Vec<FileRecord>;
 
 pub(crate) type FileRecord = (FileName, String);
 
-#[derive(Fail, Debug, Clone, Copy)]
+/// The various errors that can occur during formatting. Note that not all of
+/// these can currently be propagated to clients.
+#[derive(Fail, Debug)]
 pub enum ErrorKind {
-    // Line has exceeded character limit (found, maximum)
+    /// Line has exceeded character limit (found, maximum).
     #[fail(
         display = "line formatted, but exceeded maximum width \
                    (maximum: {} (see `max_width` option), found: {})",
@@ -117,21 +114,34 @@ pub enum ErrorKind {
         _1
     )]
     LineOverflow(usize, usize),
-    // Line ends in whitespace
+    /// Line ends in whitespace.
     #[fail(display = "left behind trailing whitespace")]
     TrailingWhitespace,
-    // TODO or FIXME item without an issue number
+    /// TODO or FIXME item without an issue number.
     #[fail(display = "found {}", _0)]
     BadIssue(Issue),
-    // License check has failed
+    /// License check has failed.
     #[fail(display = "license check failed")]
     LicenseCheck,
-    // Used deprecated skip attribute
+    /// Used deprecated skip attribute.
     #[fail(display = "`rustfmt_skip` is deprecated; use `rustfmt::skip`")]
     DeprecatedAttr,
-    // Used a rustfmt:: attribute other than skip
+    /// Used a rustfmt:: attribute other than skip.
     #[fail(display = "invalid attribute")]
     BadAttr,
+    /// An io error during reading or writing.
+    #[fail(display = "io error: {}", _0)]
+    IoError(io::Error),
+    /// The user mandated a version and the current version of Rustfmt does not
+    /// satisfy that requirement.
+    #[fail(display = "Version mismatch")]
+    VersionMismatch,
+}
+
+impl From<io::Error> for ErrorKind {
+    fn from(e: io::Error) -> ErrorKind {
+        ErrorKind::IoError(e)
+    }
 }
 
 struct FormattingError {
@@ -162,8 +172,10 @@ impl FormattingError {
     }
     fn msg_prefix(&self) -> &str {
         match self.kind {
-            ErrorKind::LineOverflow(..) | ErrorKind::TrailingWhitespace => "internal error:",
-            ErrorKind::LicenseCheck | ErrorKind::BadAttr => "error:",
+            ErrorKind::LineOverflow(..) | ErrorKind::TrailingWhitespace | ErrorKind::IoError(_) => {
+                "internal error:"
+            }
+            ErrorKind::LicenseCheck | ErrorKind::BadAttr | ErrorKind::VersionMismatch => "error:",
             ErrorKind::BadIssue(_) | ErrorKind::DeprecatedAttr => "warning:",
         }
     }
@@ -197,44 +209,83 @@ impl FormattingError {
     }
 }
 
+/// Reports on any issues that occurred during a run of Rustfmt.
+///
+/// Can be reported to the user via its `Display` implementation of `print_fancy`.
 #[derive(Clone)]
 pub struct FormatReport {
     // Maps stringified file paths to their associated formatting errors.
-    file_error_map: Rc<RefCell<HashMap<FileName, Vec<FormattingError>>>>,
+    internal: Rc<RefCell<(FormatErrorMap, ReportedErrors)>>,
+}
+
+type FormatErrorMap = HashMap<FileName, Vec<FormattingError>>;
+
+#[derive(Default, Debug)]
+struct ReportedErrors {
+    has_operational_errors: bool,
+    has_check_errors: bool,
 }
 
 impl FormatReport {
     fn new() -> FormatReport {
         FormatReport {
-            file_error_map: Rc::new(RefCell::new(HashMap::new())),
+            internal: Rc::new(RefCell::new((HashMap::new(), ReportedErrors::default()))),
         }
     }
 
     fn append(&self, f: FileName, mut v: Vec<FormattingError>) {
-        self.file_error_map
+        self.track_errors(&v);
+        self.internal
             .borrow_mut()
+            .0
             .entry(f)
             .and_modify(|fe| fe.append(&mut v))
             .or_insert(v);
     }
 
+    fn track_errors(&self, new_errors: &[FormattingError]) {
+        let errs = &mut self.internal.borrow_mut().1;
+        if errs.has_operational_errors && errs.has_check_errors {
+            return;
+        }
+        for err in new_errors {
+            match err.kind {
+                ErrorKind::LineOverflow(..) | ErrorKind::TrailingWhitespace => {
+                    errs.has_operational_errors = true;
+                }
+                ErrorKind::BadIssue(_)
+                | ErrorKind::LicenseCheck
+                | ErrorKind::DeprecatedAttr
+                | ErrorKind::BadAttr
+                | ErrorKind::VersionMismatch => {
+                    errs.has_check_errors = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn warning_count(&self) -> usize {
-        self.file_error_map
+        self.internal
             .borrow()
+            .0
             .iter()
             .map(|(_, errors)| errors.len())
             .sum()
     }
 
-    fn has_warnings(&self) -> bool {
+    /// Whether any warnings or errors are present in the report.
+    pub fn has_warnings(&self) -> bool {
         self.warning_count() > 0
     }
 
-    fn print_warnings_fancy(
+    /// Print the report to a terminal using colours and potentially other
+    /// fancy output.
+    pub fn fancy_print(
         &self,
         mut t: Box<term::Terminal<Output = io::Stderr>>,
     ) -> Result<(), term::Error> {
-        for (file, errors) in &*self.file_error_map.borrow() {
+        for (file, errors) in &self.internal.borrow().0 {
             for error in errors {
                 let prefix_space_len = error.line.to_string().len();
                 let prefix_spaces = " ".repeat(1 + prefix_space_len);
@@ -280,7 +331,7 @@ impl FormatReport {
             }
         }
 
-        if !self.file_error_map.borrow().is_empty() {
+        if !self.internal.borrow().0.is_empty() {
             t.attr(term::Attr::Bold)?;
             write!(t, "warning: ")?;
             t.reset()?;
@@ -304,7 +355,7 @@ fn target_str(space_len: usize, target_len: usize) -> String {
 impl fmt::Display for FormatReport {
     // Prints all the formatting errors.
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        for (file, errors) in &*self.file_error_map.borrow() {
+        for (file, errors) in &self.internal.borrow().0 {
             for error in errors {
                 let prefix_space_len = error.line.to_string().len();
                 let prefix_spaces = " ".repeat(1 + prefix_space_len);
@@ -343,7 +394,7 @@ impl fmt::Display for FormatReport {
                 )?;
             }
         }
-        if !self.file_error_map.borrow().is_empty() {
+        if !self.internal.borrow().0.is_empty() {
             writeln!(
                 fmt,
                 "warning: rustfmt may have failed to format. See previous {} errors.",
@@ -358,7 +409,7 @@ fn should_emit_verbose<F>(path: &FileName, config: &Config, f: F)
 where
     F: Fn(),
 {
-    if config.verbose() == Verbosity::Verbose && path.to_string() != STDIN {
+    if config.verbose() == Verbosity::Verbose && path != &FileName::Stdin {
         f();
     }
 }
@@ -438,7 +489,7 @@ fn should_report_error(
     config: &Config,
     char_kind: FullCodeCharKind,
     is_string: bool,
-    error_kind: ErrorKind,
+    error_kind: &ErrorKind,
 ) -> bool {
     let allow_error_report = if char_kind.is_comment() || is_string {
         config.error_on_unformatted()
@@ -510,7 +561,8 @@ fn format_lines(
             if format_line {
                 // Check for (and record) trailing whitespace.
                 if let Some(..) = last_wspace {
-                    if should_report_error(config, kind, is_string, ErrorKind::TrailingWhitespace) {
+                    if should_report_error(config, kind, is_string, &ErrorKind::TrailingWhitespace)
+                    {
                         trims.push((cur_line, kind, line_buffer.clone()));
                     }
                     line_len -= 1;
@@ -520,7 +572,7 @@ fn format_lines(
                 let error_kind = ErrorKind::LineOverflow(line_len, config.max_width());
                 if line_len > config.max_width()
                     && !is_skipped_line(cur_line, skipped_range)
-                    && should_report_error(config, kind, is_string, error_kind)
+                    && should_report_error(config, kind, is_string, &error_kind)
                 {
                     errors.push(FormattingError {
                         line: cur_line,
@@ -586,7 +638,7 @@ fn parse_input<'sess>(
         Input::File(file) => parse::new_parser_from_file(parse_session, &file),
         Input::Text(text) => parse::new_parser_from_source_str(
             parse_session,
-            FileName::Custom("stdin".to_owned()),
+            syntax::codemap::FileName::Custom("stdin".to_owned()),
             text,
         ),
     };
@@ -625,11 +677,11 @@ enum ParseError<'sess> {
 
 /// Format the given snippet. The snippet is expected to be *complete* code.
 /// When we cannot parse the given snippet, this function returns `None`.
-pub fn format_snippet(snippet: &str, config: &Config) -> Option<String> {
+fn format_snippet(snippet: &str, config: &Config) -> Option<String> {
     let mut out: Vec<u8> = Vec::with_capacity(snippet.len() * 2);
     let input = Input::Text(snippet.into());
     let mut config = config.clone();
-    config.set().write_mode(config::WriteMode::Display);
+    config.set().emit_mode(config::EmitMode::Stdout);
     config.set().verbose(Verbosity::Quiet);
     config.set().hide_parse_errors(true);
     match format_input(input, &config, Some(&mut out)) {
@@ -663,7 +715,7 @@ fn enclose_in_main_block(s: &str, config: &Config) -> String {
 /// The code block may be incomplete (i.e. parser may be unable to parse it).
 /// To avoid panic in parser, we wrap the code block with a dummy function.
 /// The returned code block does *not* end with newline.
-pub fn format_code_block(code_snippet: &str, config: &Config) -> Option<String> {
+fn format_code_block(code_snippet: &str, config: &Config) -> Option<String> {
     // Wrap the given code block with `fn main()` if it does not have one.
     let snippet = enclose_in_main_block(code_snippet, config);
     let mut result = String::with_capacity(snippet.len());
@@ -711,25 +763,37 @@ pub fn format_code_block(code_snippet: &str, config: &Config) -> Option<String> 
     Some(result)
 }
 
+#[derive(Debug)]
+pub enum Input {
+    File(PathBuf),
+    Text(String),
+}
+
+/// The main entry point for Rustfmt. Formats the given input according to the
+/// given config. `out` is only necessary if required by the configuration.
 pub fn format_input<T: Write>(
     input: Input,
     config: &Config,
     out: Option<&mut T>,
-) -> Result<(Summary, FileMap, FormatReport), (io::Error, Summary)> {
-    syntax::with_globals(|| format_input_inner(input, config, out))
+) -> Result<(Summary, FormatReport), (ErrorKind, Summary)> {
+    if !config.version_meets_requirement() {
+        return Err((ErrorKind::VersionMismatch, Summary::default()));
+    }
+
+    syntax::with_globals(|| format_input_inner(input, config, out)).map(|tup| (tup.0, tup.2))
 }
 
 fn format_input_inner<T: Write>(
     input: Input,
     config: &Config,
     mut out: Option<&mut T>,
-) -> Result<(Summary, FileMap, FormatReport), (io::Error, Summary)> {
+) -> Result<(Summary, FileMap, FormatReport), (ErrorKind, Summary)> {
     let mut summary = Summary::default();
     if config.disable_all_formatting() {
         // When the input is from stdin, echo back the input.
         if let Input::Text(ref buf) = input {
             if let Err(e) = io::stdout().write_all(buf.as_bytes()) {
-                return Err((e, summary));
+                return Err((From::from(e), summary));
             }
         }
         return Ok((summary, FileMap::new(), FormatReport::new()));
@@ -757,7 +821,7 @@ fn format_input_inner<T: Write>(
 
     let main_file = match input {
         Input::File(ref file) => FileName::Real(file.clone()),
-        Input::Text(..) => FileName::Custom("stdin".to_owned()),
+        Input::Text(..) => FileName::Stdin,
     };
 
     let krate = match parse_input(input, &parse_session, config) {
@@ -827,6 +891,16 @@ fn format_input_inner<T: Write>(
         )
     });
 
+    {
+        let report_errs = &report.internal.borrow().1;
+        if report_errs.has_check_errors {
+            summary.add_check_error();
+        }
+        if report_errs.has_operational_errors {
+            summary.add_operational_error();
+        }
+    }
+
     match format_result {
         Ok((file_map, has_diff)) => {
             if report.has_warnings() {
@@ -839,7 +913,7 @@ fn format_input_inner<T: Write>(
 
             Ok((summary, file_map, report))
         }
-        Err(e) => Err((e, summary)),
+        Err(e) => Err((From::from(e), summary)),
     }
 }
 
@@ -862,33 +936,20 @@ struct ModifiedLines {
     pub chunks: Vec<ModifiedChunk>,
 }
 
-/// The successful result of formatting via `get_modified_lines()`.
-#[cfg(test)]
-struct ModifiedLinesResult {
-    /// The high level summary details
-    pub summary: Summary,
-    /// The result Filemap
-    pub filemap: FileMap,
-    /// Map of formatting errors
-    pub report: FormatReport,
-    /// The sets of updated lines.
-    pub modified_lines: ModifiedLines,
-}
-
 /// Format a file and return a `ModifiedLines` data structure describing
 /// the changed ranges of lines.
 #[cfg(test)]
 fn get_modified_lines(
     input: Input,
     config: &Config,
-) -> Result<ModifiedLinesResult, (io::Error, Summary)> {
+) -> Result<ModifiedLines, (ErrorKind, Summary)> {
     use std::io::BufRead;
 
     let mut data = Vec::new();
 
     let mut config = config.clone();
-    config.set().write_mode(config::WriteMode::Modified);
-    let (summary, filemap, report) = format_input(input, &config, Some(&mut data))?;
+    config.set().emit_mode(config::EmitMode::ModifiedLines);
+    format_input(input, &config, Some(&mut data))?;
 
     let mut lines = data.lines();
     let mut chunks = Vec::new();
@@ -912,67 +973,7 @@ fn get_modified_lines(
             lines: added_lines,
         });
     }
-    Ok(ModifiedLinesResult {
-        summary,
-        filemap,
-        report,
-        modified_lines: ModifiedLines { chunks },
-    })
-}
-
-#[derive(Debug)]
-pub enum Input {
-    File(PathBuf),
-    Text(String),
-}
-
-pub fn format_and_emit_report(input: Input, config: &Config) -> FmtResult<Summary> {
-    if !config.version_meets_requirement() {
-        return Err(format_err!("Version mismatch"));
-    }
-    let out = &mut stdout();
-    match format_input(input, config, Some(out)) {
-        Ok((summary, _, report)) => {
-            if report.has_warnings() {
-                match term::stderr() {
-                    Some(ref t)
-                        if use_colored_tty(config.color())
-                            && t.supports_color()
-                            && t.supports_attr(term::Attr::Bold) =>
-                    {
-                        match report.print_warnings_fancy(term::stderr().unwrap()) {
-                            Ok(..) => (),
-                            Err(..) => panic!("Unable to write to stderr: {}", report),
-                        }
-                    }
-                    _ => eprintln!("{}", report),
-                }
-            }
-
-            Ok(summary)
-        }
-        Err((msg, mut summary)) => {
-            eprintln!("Error writing files: {}", msg);
-            summary.add_operational_error();
-            Ok(summary)
-        }
-    }
-}
-
-pub fn emit_pre_matter(config: &Config) -> FmtResult<()> {
-    if config.write_mode() == WriteMode::Checkstyle {
-        let mut out = &mut stdout();
-        checkstyle::output_header(&mut out)?;
-    }
-    Ok(())
-}
-
-pub fn emit_post_matter(config: &Config) -> FmtResult<()> {
-    if config.write_mode() == WriteMode::Checkstyle {
-        let mut out = &mut stdout();
-        checkstyle::output_footer(&mut out)?;
-    }
-    Ok(())
+    Ok(ModifiedLines { chunks })
 }
 
 #[cfg(test)]

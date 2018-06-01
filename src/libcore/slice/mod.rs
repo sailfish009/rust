@@ -59,9 +59,16 @@ mod rotate;
 mod sort;
 
 #[repr(C)]
-struct Repr<T> {
-    pub data: *const T,
-    pub len: usize,
+union Repr<'a, T: 'a> {
+    rust: &'a [T],
+    rust_mut: &'a mut [T],
+    raw: FatPtr<T>,
+}
+
+#[repr(C)]
+struct FatPtr<T> {
+    data: *const T,
+    len: usize,
 }
 
 //
@@ -119,9 +126,10 @@ impl<T> [T] {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
-    pub fn len(&self) -> usize {
+    #[rustc_const_unstable(feature = "const_slice_len")]
+    pub const fn len(&self) -> usize {
         unsafe {
-            mem::transmute::<&[T], Repr<T>>(self).len
+            Repr { rust: self }.raw.len
         }
     }
 
@@ -135,7 +143,8 @@ impl<T> [T] {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    #[rustc_const_unstable(feature = "const_slice_len")]
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
@@ -418,7 +427,8 @@ impl<T> [T] {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
-    pub fn as_ptr(&self) -> *const T {
+    #[rustc_const_unstable(feature = "const_slice_as_ptr")]
+    pub const fn as_ptr(&self) -> *const T {
         self as *const [T] as *const T
     }
 
@@ -3829,10 +3839,9 @@ unsafe impl<'a, T> TrustedRandomAccess for ExactChunksMut<'a, T> {
 /// valid for `len` elements, nor whether the lifetime inferred is a suitable
 /// lifetime for the returned slice.
 ///
-/// `p` must be non-null, even for zero-length slices, because non-zero bits
-/// are required to distinguish between a zero-length slice within `Some()`
-/// from `None`. `p` can be a bogus non-dereferencable pointer, such as `0x1`,
-/// for zero-length slices, though.
+/// `p` must be non-null and aligned, even for zero-length slices, as is
+/// required for all references. However, for zero-length slices, `p` can be
+/// a bogus non-dereferencable pointer such as [`NonNull::dangling()`].
 ///
 /// # Caveat
 ///
@@ -3854,10 +3863,12 @@ unsafe impl<'a, T> TrustedRandomAccess for ExactChunksMut<'a, T> {
 ///     let slice = slice::from_raw_parts(ptr, amt);
 /// }
 /// ```
+///
+/// [`NonNull::dangling()`]: ../../std/ptr/struct.NonNull.html#method.dangling
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
-pub unsafe fn from_raw_parts<'a, T>(p: *const T, len: usize) -> &'a [T] {
-    mem::transmute(Repr { data: p, len: len })
+pub unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T] {
+    Repr { raw: FatPtr { data, len } }.rust
 }
 
 /// Performs the same functionality as `from_raw_parts`, except that a mutable
@@ -3865,16 +3876,16 @@ pub unsafe fn from_raw_parts<'a, T>(p: *const T, len: usize) -> &'a [T] {
 ///
 /// This function is unsafe for the same reasons as `from_raw_parts`, as well
 /// as not being able to provide a non-aliasing guarantee of the returned
-/// mutable slice. `p` must be non-null even for zero-length slices as with
+/// mutable slice. `p` must be non-null and aligned even for zero-length slices as with
 /// `from_raw_parts`.
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
-pub unsafe fn from_raw_parts_mut<'a, T>(p: *mut T, len: usize) -> &'a mut [T] {
-    mem::transmute(Repr { data: p, len: len })
+pub unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T] {
+    Repr { raw: FatPtr { data, len} }.rust_mut
 }
 
 /// Converts a reference to T into a slice of length 1 (without copying).
-#[unstable(feature = "from_ref", issue = "45703")]
+#[stable(feature = "from_ref", since = "1.28.0")]
 pub fn from_ref<T>(s: &T) -> &[T] {
     unsafe {
         from_raw_parts(s, 1)
@@ -3882,8 +3893,8 @@ pub fn from_ref<T>(s: &T) -> &[T] {
 }
 
 /// Converts a reference to T into a slice of length 1 (without copying).
-#[unstable(feature = "from_ref", issue = "45703")]
-pub fn from_ref_mut<T>(s: &mut T) -> &mut [T] {
+#[stable(feature = "from_ref", since = "1.28.0")]
+pub fn from_mut<T>(s: &mut T) -> &mut [T] {
     unsafe {
         from_raw_parts_mut(s, 1)
     }

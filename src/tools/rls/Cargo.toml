@@ -10,9 +10,9 @@ categories = ["development-tools"]
 build = "build.rs"
 
 [dependencies]
-cargo = { git = "https://github.com/rust-lang/cargo", rev = "9e53ac6e6525da914cb05a85e5e8eff7b5dca81f" }
+cargo = { git = "https://github.com/rust-lang/cargo", rev = "22c0f22f5621f1b68558d80a0966d073b9b68932" }
 cargo_metadata = "0.5.2"
-clippy_lints = { version = "0.0.200", optional = true }
+clippy_lints = { version = "0.0.205", optional = true }
 env_logger = "0.5"
 failure = "0.1.1"
 jsonrpc-core = "8.0.1"
@@ -28,7 +28,7 @@ rls-data = { version = "0.16", features = ["serialize-serde"] }
 rls-rustc = "0.3.0"
 rls-span = { version = "0.4", features = ["serialize-serde"] }
 rls-vfs = { version = "0.4.5", features = ["racer-impls"] }
-rustfmt-nightly = "0.7"
+rustfmt-nightly = "0.8"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"

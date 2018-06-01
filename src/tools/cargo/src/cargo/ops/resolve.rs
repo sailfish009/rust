@@ -272,11 +272,11 @@ pub fn resolve_with_previous<'a, 'cfg>(
                 // workspace, then we use `method` specified. Otherwise we use a
                 // base method with no features specified but using default features
                 // for any other packages specified with `-p`.
-                Method::Required { dev_deps, .. } => {
+                Method::Required { dev_deps, all_features, .. } => {
                     let base = Method::Required {
                         dev_deps,
                         features: &[],
-                        all_features: false,
+                        all_features,
                         uses_default_features: true,
                     };
                     let member_id = member.package_id();
@@ -335,7 +335,7 @@ pub fn resolve_with_previous<'a, 'cfg>(
 
 /// Read the `paths` configuration variable to discover all path overrides that
 /// have been configured.
-fn add_overrides<'a>(registry: &mut PackageRegistry<'a>, ws: &Workspace<'a>) -> CargoResult<()> {
+pub fn add_overrides<'a>(registry: &mut PackageRegistry<'a>, ws: &Workspace<'a>) -> CargoResult<()> {
     let paths = match ws.config().get_list("paths")? {
         Some(list) => list,
         None => return Ok(()),
@@ -364,7 +364,7 @@ fn add_overrides<'a>(registry: &mut PackageRegistry<'a>, ws: &Workspace<'a>) -> 
     Ok(())
 }
 
-fn get_resolved_packages<'a>(resolve: &Resolve, registry: PackageRegistry<'a>) -> PackageSet<'a> {
+pub fn get_resolved_packages<'a>(resolve: &Resolve, registry: PackageRegistry<'a>) -> PackageSet<'a> {
     let ids: Vec<PackageId> = resolve.iter().cloned().collect();
     registry.get(&ids)
 }

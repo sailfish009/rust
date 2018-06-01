@@ -10,11 +10,11 @@
 
 use std::borrow::Cow;
 
-use syntax::codemap::{BytePos, FileName, Pos, Span};
+use syntax::codemap::{BytePos, Pos, Span};
 
 use codemap::LineRangeUtils;
 use comment::{rewrite_comment, CodeCharKind, CommentCodeSlices};
-use config::WriteMode;
+use config::{EmitMode, FileName};
 use shape::{Indent, Shape};
 use utils::{count_newlines, last_line_width, mk_sp};
 use visitor::FmtVisitor;
@@ -46,6 +46,19 @@ impl<'a> FmtVisitor<'a> {
     // TODO these format_missing methods are ugly. Refactor and add unit tests
     // for the central whitespace stripping loop.
     pub fn format_missing(&mut self, end: BytePos) {
+        // HACK(topecongiro)
+        // We use `format_missing()` to extract a missing comment between a macro
+        // (or alike) and a trailing semicolon. Here we just try to avoid calling
+        // `format_missing_inner` in the common case where there is no such comment.
+        // This is a hack, ideally we should fix a possible bug in `format_missing_inner`
+        // or refactor `visit_mac` and `rewrite_macro`, but this should suffice to fix the
+        // issue (#2727).
+        let missing_snippet = self.snippet(mk_sp(self.last_pos, end));
+        if missing_snippet.trim() == ";" {
+            self.push_str(";");
+            self.last_pos = end;
+            return;
+        }
         self.format_missing_inner(end, |this, last_snippet, _| this.push_str(last_snippet))
     }
 
@@ -177,11 +190,11 @@ impl<'a> FmtVisitor<'a> {
         // Annoyingly, the library functions for splitting by lines etc. are not
         // quite right, so we must do it ourselves.
         let char_pos = self.codemap.lookup_char_pos(span.lo());
-        let file_name = &char_pos.file.name;
+        let file_name = &char_pos.file.name.clone().into();
         let mut status = SnippetStatus::new(char_pos.line);
 
-        let snippet = &*match self.config.write_mode() {
-            WriteMode::Coverage => Cow::from(replace_chars(old_snippet)),
+        let snippet = &*match self.config.emit_mode() {
+            EmitMode::Coverage => Cow::from(replace_chars(old_snippet)),
             _ => Cow::from(old_snippet),
         };
 
@@ -189,7 +202,7 @@ impl<'a> FmtVisitor<'a> {
             debug!("{:?}: {:?}", kind, subslice);
 
             let newline_count = count_newlines(subslice);
-            let within_file_lines_range = self.config.file_lines().intersects_range(
+            let within_file_lines_range = self.config.file_lines().contains_range(
                 file_name,
                 status.cur_line,
                 status.cur_line + newline_count,

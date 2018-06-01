@@ -572,7 +572,7 @@ impl<'a> FmtVisitor<'a> {
             ast::VariantData::Unit(..) => {
                 if let Some(ref expr) = field.node.disr_expr {
                     let lhs = format!("{} =", field.node.ident.name);
-                    rewrite_assign_rhs(&context, lhs, &**expr, shape)?
+                    rewrite_assign_rhs(&context, lhs, &*expr.value, shape)?
                 } else {
                     field.node.ident.name.to_string()
                 }
@@ -963,9 +963,9 @@ pub fn format_trait(context: &RewriteContext, item: &ast::Item, offset: Indent) 
         let mut result = String::with_capacity(128);
         let header = format!(
             "{}{}{}trait ",
-            format_auto(is_auto),
             format_visibility(&item.vis),
             format_unsafety(unsafety),
+            format_auto(is_auto),
         );
         result.push_str(&header);
 
@@ -1380,9 +1380,9 @@ fn format_tuple_struct(
         // We need to put the where clause on a new line, but we didn't
         // know that earlier, so the where clause will not be indented properly.
         result.push('\n');
-        result
-            .push_str(&(offset.block_only() + (context.config.tab_spaces() - 1))
-                .to_string(context.config));
+        result.push_str(
+            &(offset.block_only() + (context.config.tab_spaces() - 1)).to_string(context.config),
+        );
     }
     result.push_str(&where_clause_str);
 
@@ -1915,12 +1915,6 @@ fn rewrite_fn_base(
     } else {
         result.push('(');
     }
-    if context.config.spaces_within_parens_and_brackets()
-        && !fd.inputs.is_empty()
-        && result.ends_with('(')
-    {
-        result.push(' ')
-    }
 
     // Skip `pub(crate)`.
     let lo_after_visibility = get_bytepos_after_visibility(&fn_sig.visibility, span);
@@ -1977,9 +1971,6 @@ fn rewrite_fn_base(
         // 1 = `)`
         if fd.inputs.is_empty() && used_width + 1 > context.config.max_width() {
             result.push('\n');
-        }
-        if context.config.spaces_within_parens_and_brackets() && !fd.inputs.is_empty() {
-            result.push(' ')
         }
         // If the last line of args contains comment, we cannot put the closing paren
         // on the same line.
