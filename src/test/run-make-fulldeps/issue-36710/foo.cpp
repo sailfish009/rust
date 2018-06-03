@@ -8,13 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// aux-build:edition-extern-crate-allowed.rs
-// compile-flags: --edition 2015
-// compile-pass
+#include <stdint.h>
 
-#![warn(rust_2018_idioms)]
+struct A {
+    A() { v = 1234; }
+    ~A() { v = 1; }
+    uint32_t v;
+};
 
-extern crate edition_extern_crate_allowed;
-//~^ WARNING unused extern crate
+A a;
 
-fn main() {}
+extern "C" {
+    uint32_t get() {
+        return a.v;
+    }
+}

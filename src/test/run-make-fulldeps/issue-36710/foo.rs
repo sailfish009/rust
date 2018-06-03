@@ -8,13 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// aux-build:edition-extern-crate-allowed.rs
-// compile-flags: --edition 2015
-// compile-pass
+// Tests that linking to C++ code with global destructors works.
 
-#![warn(rust_2018_idioms)]
+extern { fn get() -> u32; }
 
-extern crate edition_extern_crate_allowed;
-//~^ WARNING unused extern crate
-
-fn main() {}
+fn main() {
+    let i = unsafe { get() };
+    assert_eq!(i, 1234);
+}
